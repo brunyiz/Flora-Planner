@@ -10,14 +10,7 @@
  * (file://) em vez de por um servidor local.
  */
 
-/* ==========================================================================
-   SOM DE CLIQUE (estilo 8-bit/"blocky")
-   ==========================================================================
-   Observação: não é possível incluir o áudio original do Minecraft (é um
-   arquivo protegido por direitos autorais do jogo). Em vez disso, geramos
-   em tempo real, via Web Audio API, um "blip" curto e blocado no mesmo
-   espírito 8-bit, sem depender de nenhum arquivo externo.
-   ========================================================================== */
+// SOM DE CLIQUE (estilo 8-bit/"blocky")
 class ClickSound {
     constructor() {
         this.ctx = null;
