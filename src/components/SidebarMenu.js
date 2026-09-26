@@ -68,7 +68,7 @@ class SidebarMenu {
             </nav>
             <div class="sidebar-footer">
                 <span>Flora Planner v2.2 &bull; Organização Intuitiva</span>
-                <span class="footer-signature"><i class="fas fa-robot"></i>Criado por Brunis com o auxílio de Inteligência Artificial</span>
+                <span class="footer-signature"><i class="fas fa-robot"></i>Criado por Brunyiz com Inteligência Artificial</span>
             </div>
         `;
         document.body.appendChild(this.sidebar);
