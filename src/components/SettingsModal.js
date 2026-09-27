@@ -176,7 +176,7 @@ class SettingsModal {
         this.renderCategoryList();
     }
 
-    renderCategoryList() {
+        renderCategoryList() {
         const list = this.modal.querySelector('#category-list');
         if (!list) return;
 
@@ -188,18 +188,22 @@ class SettingsModal {
         const tasks = StorageManager.getTasks();
 
         list.innerHTML = categories.map(cat => {
-            const count = tasks.filter(t => (t.category || 'Geral') === cat).length;
+            const count = tasks.filter(t => (t.category || 'Geral') === cat.name).length;
             return `
                 <div class="category-item">
-                    <span>
-                        <i class="fas fa-tag" style="color: var(--cor-principal); margin-right: 8px;"></i>
-                        ${escapeHtml(cat)}
-                        <small style="color: var(--cor-texto-light); margin-left: 6px;">
+                    <div class="category-item-left">
+                        <input type="color"
+                               class="category-color-input"
+                               data-category="${escapeHtml(cat.name)}"
+                               value="${escapeHtml(cat.color)}"
+                               title="Cor da categoria">
+                        <span class="category-name">${escapeHtml(cat.name)}</span>
+                        <small class="category-count">
                             (${count} tarefa${count === 1 ? '' : 's'})
                         </small>
-                    </span>
+                    </div>
                     <button type="button" class="category-remove"
-                            data-category="${escapeHtml(cat)}"
+                            data-category="${escapeHtml(cat.name)}"
                             title="Remover categoria">
                         <i class="fas fa-times"></i>
                     </button>
@@ -207,13 +211,24 @@ class SettingsModal {
             `;
         }).join('');
 
+        // Remover categoria
         list.querySelectorAll('.category-remove').forEach(btn => {
             btn.addEventListener('click', () => {
                 const cat = btn.getAttribute('data-category');
                 if (confirm(`Remover a categoria "${cat}"?\n\nTarefas que já usam essa categoria continuarão existindo; apenas a opção some da lista.`)) {
                     StorageManager.removeCategory(cat);
                     this.renderCategoryList();
+                    if (this.onSettingsChanged) this.onSettingsChanged(StorageManager.getSettings());
                 }
+            });
+        });
+
+        // Alterar cor — salva na hora e atualiza o calendário atrás do modal
+        list.querySelectorAll('.category-color-input').forEach(input => {
+            input.addEventListener('input', () => {
+                const cat = input.getAttribute('data-category');
+                StorageManager.updateCategoryColor(cat, input.value);
+                if (this.onSettingsChanged) this.onSettingsChanged(StorageManager.getSettings());
             });
         });
     }
