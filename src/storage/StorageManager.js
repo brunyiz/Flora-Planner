@@ -1,14 +1,23 @@
 /**
  * StorageManager.js
- * Gerenciamento centralizado de persistência de dados no LocalStorage
- * + utilitários de salvamento em arquivo (com escolha de pasta).
+ * Persistência + utilitários de salvamento em arquivo.
+ * Categorias agora são objetos { name, color } (com migração automática
+ * do formato antigo — lista de strings — para o novo).
  */
 
 class StorageManager {
     static TASKS_KEY = 'flora_planner_tasks';
     static SETTINGS_KEY = 'flora_planner_settings';
 
-    static DEFAULT_CATEGORIES = ['Geral', 'Trabalho', 'Estudos', 'Pessoal', 'Saúde'];
+    static DEFAULT_CATEGORIES = [
+        { name: 'Geral',    color: '#D8B4FE' },
+        { name: 'Trabalho', color: '#4299E1' },
+        { name: 'Estudos',  color: '#48BB78' },
+        { name: 'Pessoal',  color: '#ED8936' },
+        { name: 'Saúde',    color: '#F56565' }
+    ];
+
+    static DEFAULT_CATEGORY_COLOR = '#9F7AEA';
 
     /* ------------------------- TAREFAS ------------------------- */
 
@@ -45,11 +54,15 @@ class StorageManager {
             pdfOrientation: 'landscape',
             pdfShowNotes: true,
             pdfFontSize: 'medium',
-            categories: [...this.DEFAULT_CATEGORIES]
+            categories: this.DEFAULT_CATEGORIES.map(c => ({ ...c }))
         };
         try {
             const data = localStorage.getItem(this.SETTINGS_KEY);
-            return data ? { ...defaults, ...JSON.parse(data) } : defaults;
+            if (!data) return defaults;
+            const parsed = JSON.parse(data);
+            const merged = { ...defaults, ...parsed };
+            merged.categories = this.normalizeCategories(merged.categories);
+            return merged;
         } catch (e) {
             return defaults;
         }
@@ -65,37 +78,98 @@ class StorageManager {
 
     /* ----------------------- CATEGORIAS ------------------------- */
 
+    /**
+     * Normaliza a lista de categorias, aceitando tanto o formato antigo
+     * (array de strings) quanto o novo (array de {name, color}).
+     */
+    static normalizeCategories(categories) {
+        if (!Array.isArray(categories) || categories.length === 0) {
+            return this.DEFAULT_CATEGORIES.map(c => ({ ...c }));
+        }
+        return categories.map((cat, i) => {
+            if (typeof cat === 'string') {
+                const def = this.DEFAULT_CATEGORIES.find(
+                    d => d.name.toLowerCase() === cat.toLowerCase()
+                );
+                return {
+                    name: cat,
+                    color: def ? def.color : this.DEFAULT_CATEGORY_COLOR
+                };
+            }
+            if (cat && typeof cat === 'object' && cat.name) {
+                return {
+                    name: String(cat.name),
+                    color: cat.color || this.DEFAULT_CATEGORY_COLOR
+                };
+            }
+            return {
+                name: `Categoria ${i + 1}`,
+                color: this.DEFAULT_CATEGORY_COLOR
+            };
+        });
+    }
+
+    /** Retorna array de { name, color } */
     static getCategories() {
         const settings = this.getSettings();
-        if (Array.isArray(settings.categories) && settings.categories.length > 0) {
-            return [...settings.categories];
-        }
-        return [...this.DEFAULT_CATEGORIES];
+        return settings.categories.map(c => ({ ...c }));
+    }
+
+    /** Retorna apenas os nomes (atalho) */
+    static getCategoryNames() {
+        return this.getCategories().map(c => c.name);
+    }
+
+    /** Cor de uma categoria pelo nome (fallback se não existir) */
+    static getCategoryColor(name) {
+        const cats = this.getCategories();
+        const found = cats.find(c => c.name === name);
+        return found ? found.color : this.DEFAULT_CATEGORY_COLOR;
     }
 
     static saveCategories(categories) {
         const settings = this.getSettings();
-        settings.categories = Array.isArray(categories) ? categories : this.getCategories();
+        settings.categories = this.normalizeCategories(categories);
         this.saveSettings(settings);
     }
 
-    /** Adiciona uma categoria. Retorna true se foi adicionada, false se já existia/vazia. */
-    static addCategory(name) {
+    /**
+     * Adiciona categoria.
+     * @param {string} name
+     * @param {string} [color] — se omitido, usa o roxo padrão
+     * @returns {boolean} true se adicionada, false se já existia/vazia
+     */
+    static addCategory(name, color) {
         const trimmed = String(name || '').trim();
         if (!trimmed) return false;
         const categories = this.getCategories();
-        const exists = categories.some(c => c.toLowerCase() === trimmed.toLowerCase());
+        const exists = categories.some(c => c.name.toLowerCase() === trimmed.toLowerCase());
         if (exists) return false;
-        categories.push(trimmed);
+        categories.push({
+            name: trimmed,
+            color: color || this.DEFAULT_CATEGORY_COLOR
+        });
         this.saveCategories(categories);
         return true;
     }
 
     /** Remove uma categoria (mantém pelo menos 'Geral'). */
     static removeCategory(name) {
-        let categories = this.getCategories().filter(c => c !== name);
-        if (categories.length === 0) categories = ['Geral'];
+        let categories = this.getCategories().filter(c => c.name !== name);
+        if (categories.length === 0) {
+            categories = [{ name: 'Geral', color: this.DEFAULT_CATEGORY_COLOR }];
+        }
         this.saveCategories(categories);
+    }
+
+    /** Atualiza a cor de uma categoria existente. */
+    static updateCategoryColor(name, color) {
+        const categories = this.getCategories();
+        const idx = categories.findIndex(c => c.name === name);
+        if (idx < 0) return false;
+        categories[idx].color = color;
+        this.saveCategories(categories);
+        return true;
     }
 
     /* ------------------------- BACKUP --------------------------- */
@@ -103,7 +177,7 @@ class StorageManager {
     static buildBackupPayload() {
         return {
             app: 'flora-planner',
-            version: 2,
+            version: 3,
             exportedAt: new Date().toISOString(),
             tasks: this.getTasks(),
             settings: this.getSettings()
@@ -122,31 +196,17 @@ class StorageManager {
             throw new Error('Arquivo inválido: formato de backup do Flora Planner não reconhecido.');
         }
 
-        const settings = { ...this.getSettings(), ...(parsed.settings || {}) };
-        // Garante que categorias personalizadas continuem existindo
-        if (!Array.isArray(settings.categories) || settings.categories.length === 0) {
-            settings.categories = [...this.DEFAULT_CATEGORIES];
-        }
+        const merged = { ...this.getSettings(), ...(parsed.settings || {}) };
+        merged.categories = this.normalizeCategories(merged.categories);
 
         this.saveTasks(parsed.tasks);
-        this.saveSettings(settings);
+        this.saveSettings(merged);
 
-        return { tasks: parsed.tasks, settings };
+        return { tasks: parsed.tasks, settings: merged };
     }
 
     /* ---------------- SALVAMENTO DE ARQUIVOS -------------------- */
 
-    /**
-     * Salva um Blob em disco.
-     * Se o navegador suportar File System Access API (Chrome/Edge recentes),
-     * abre o diálogo "Salvar como" permitindo escolher a pasta.
-     * Caso contrário, faz download tradicional para a pasta padrão.
-     *
-     * @param {Blob} blob
-     * @param {string} filename
-     * @param {string} mimeType
-     * @returns {Promise<{saved:boolean, via:string, canceled?:boolean}>}
-     */
     static async saveBlob(blob, filename, mimeType) {
         const ext = '.' + filename.split('.').pop();
         const supportsPicker = typeof window !== 'undefined' && typeof window.showSaveFilePicker === 'function';
@@ -169,11 +229,9 @@ class StorageManager {
                     return { saved: false, via: 'picker', canceled: true };
                 }
                 console.warn('File System Access API indisponível, usando download padrão:', err);
-                // cai no fallback abaixo
             }
         }
 
-        // Fallback universal
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
