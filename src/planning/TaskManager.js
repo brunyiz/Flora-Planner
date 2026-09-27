@@ -116,16 +116,16 @@ class TaskManager {
         });
     }
 
-    /** Categoria que existe (case-insensitive) — usada para selecionar depois de adicionar */
+        /** Nome da categoria que existe (case-insensitive) — usada após tentar adicionar */
     getFallbackCategory(name) {
         const cats = StorageManager.getCategories();
-        return cats.find(c => c.toLowerCase() === String(name).toLowerCase()) || cats[0] || 'Geral';
+        const found = cats.find(c => c.name.toLowerCase() === String(name).toLowerCase());
+        return found ? found.name : (cats[0] && cats[0].name) || 'Geral';
     }
 
     /**
-     * Preenche o <select> de categorias com as categorias do StorageManager
-     * e acrescenta a opção "+ Nova categoria...".
-     * Se `selected` for passado, marca essa categoria.
+     * Preenche o <select> de categorias com as categorias do StorageManager.
+     * Categorias agora são objetos { name, color }.
      */
     populateCategorySelect(selected) {
         const select = this.categoryInput;
@@ -136,14 +136,13 @@ class TaskManager {
 
         categories.forEach(cat => {
             const opt = document.createElement('option');
-            opt.value = cat;
-            opt.textContent = cat;
+            opt.value = cat.name;
+            opt.textContent = cat.name;
             select.appendChild(opt);
         });
 
-        // Se a tarefa possui uma categoria que não está mais na lista,
-        // adiciona temporariamente para não perder a informação.
-        if (selected && !categories.includes(selected)) {
+        // Categoria da tarefa que não está mais na lista → adiciona temporariamente
+        if (selected && !categories.some(c => c.name === selected)) {
             const opt = document.createElement('option');
             opt.value = selected;
             opt.textContent = `${selected} (não listada)`;
@@ -158,7 +157,7 @@ class TaskManager {
         if (selected) {
             select.value = selected;
         } else {
-            select.value = categories[0] || 'Geral';
+            select.value = (categories[0] && categories[0].name) || 'Geral';
         }
     }
 
