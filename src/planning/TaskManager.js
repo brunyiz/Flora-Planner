@@ -1,12 +1,9 @@
 /**
  * TaskManager.js
  * Gerenciamento das operações CRUD de tarefas e da janela de edição com Post-it.
- *
- * IMPORTANTE: este módulo utiliza o modal já existente em index.html
- * (#task-modal) em vez de criar um segundo modal duplicado — evitar
- * IDs repetidos no DOM era a causa de vários botões "sem função".
+ * Categorias são carregadas dinamicamente do StorageManager e podem ser
+ * criadas na hora pelo próprio formulário.
  */
-
 
 class TaskManager {
     constructor({ onTasksUpdated }) {
@@ -16,9 +13,6 @@ class TaskManager {
 
         this.cacheDOM();
         this.bindEvents();
-        // Não chamamos notify() aqui: no momento da construção do TaskManager
-        // o CalendarView ainda não existe (main.js o cria em seguida). Quem
-        // popula a view inicial é o próprio main.js, via getTasks()/setTasks().
     }
 
     cacheDOM() {
@@ -28,6 +22,7 @@ class TaskManager {
         this.closeBtn = document.getElementById('close-task-modal');
         this.cancelBtn = document.getElementById('btn-cancel-task');
         this.deleteBtn = document.getElementById('btn-delete-task');
+        this.duplicateBtn = document.getElementById('btn-duplicate-task');
 
         this.idInput = document.getElementById('task-id');
         this.titleInput = document.getElementById('task-title');
@@ -49,7 +44,6 @@ class TaskManager {
         if (this.closeBtn) this.closeBtn.addEventListener('click', () => this.close());
         if (this.cancelBtn) this.cancelBtn.addEventListener('click', () => this.close());
 
-        // Fecha ao clicar fora do conteúdo do modal
         if (this.modal) {
             this.modal.addEventListener('click', (e) => {
                 if (e.target === this.modal) this.close();
@@ -71,7 +65,31 @@ class TaskManager {
             });
         }
 
-        // Ferramentas do painel de anotações (Post-it)
+        if (this.duplicateBtn) {
+            this.duplicateBtn.addEventListener('click', () => this.duplicateActiveTask());
+        }
+
+        // Categoria dinâmica: opção "+ Nova categoria" no select
+        if (this.categoryInput) {
+            this.categoryInput.addEventListener('change', () => {
+                if (this.categoryInput.value === '__new__') {
+                    const name = prompt('Nome da nova categoria:');
+                    if (name && name.trim()) {
+                        const created = StorageManager.addCategory(name.trim());
+                        const value = name.trim();
+                        this.populateCategorySelect(created ? value : this.getFallbackCategory(value));
+                        if (!created) {
+                            // categoria já existia — só seleciona
+                            this.populateCategorySelect(value);
+                        }
+                    } else {
+                        this.populateCategorySelect();
+                    }
+                }
+            });
+        }
+
+        // Ferramentas do Post-it
         if (this.notesTextarea) {
             this.notesTextarea.addEventListener('input', () => this.updateCharCount());
         }
@@ -91,12 +109,57 @@ class TaskManager {
             });
         }
 
-        // Fecha o modal com a tecla ESC
         document.addEventListener('keydown', (e) => {
             if (e.key === 'Escape' && this.modal && this.modal.style.display === 'flex') {
                 this.close();
             }
         });
+    }
+
+    /** Categoria que existe (case-insensitive) — usada para selecionar depois de adicionar */
+    getFallbackCategory(name) {
+        const cats = StorageManager.getCategories();
+        return cats.find(c => c.toLowerCase() === String(name).toLowerCase()) || cats[0] || 'Geral';
+    }
+
+    /**
+     * Preenche o <select> de categorias com as categorias do StorageManager
+     * e acrescenta a opção "+ Nova categoria...".
+     * Se `selected` for passado, marca essa categoria.
+     */
+    populateCategorySelect(selected) {
+        const select = this.categoryInput;
+        if (!select) return;
+
+        const categories = StorageManager.getCategories();
+        select.innerHTML = '';
+
+        categories.forEach(cat => {
+            const opt = document.createElement('option');
+            opt.value = cat;
+            opt.textContent = cat;
+            select.appendChild(opt);
+        });
+
+        // Se a tarefa possui uma categoria que não está mais na lista,
+        // adiciona temporariamente para não perder a informação.
+        if (selected && !categories.includes(selected)) {
+            const opt = document.createElement('option');
+            opt.value = selected;
+            opt.textContent = `${selected} (não listada)`;
+            select.insertBefore(opt, select.firstChild);
+        }
+
+        const addOpt = document.createElement('option');
+        addOpt.value = '__new__';
+        addOpt.textContent = '+ Nova categoria...';
+        select.appendChild(addOpt);
+
+        if (selected) {
+            select.value = selected;
+        } else {
+            select.value = categories[0] || 'Geral';
+        }
     }
 
     insertAtCursor(text) {
@@ -138,12 +201,13 @@ class TaskManager {
         this.dateInput.value = dateStr || new Date().toISOString().split('T')[0];
         if (this.timeInput) this.timeInput.value = '';
         this.priorityInput.value = 'media';
-        if (this.categoryInput) this.categoryInput.value = 'Geral';
+        this.populateCategorySelect();
         this.completedInput.checked = false;
         if (this.notesTextarea) this.notesTextarea.value = '';
         this.updateCharCount();
 
         if (this.deleteBtn) this.deleteBtn.style.display = 'none';
+        if (this.duplicateBtn) this.duplicateBtn.style.display = 'none';
         this.open();
     }
 
@@ -157,12 +221,13 @@ class TaskManager {
         this.dateInput.value = task.date;
         if (this.timeInput) this.timeInput.value = task.time || '';
         this.priorityInput.value = task.priority || 'media';
-        if (this.categoryInput) this.categoryInput.value = task.category || 'Geral';
+        this.populateCategorySelect(task.category || 'Geral');
         this.completedInput.checked = !!task.completed;
         if (this.notesTextarea) this.notesTextarea.value = task.notes || '';
         this.updateCharCount();
 
         if (this.deleteBtn) this.deleteBtn.style.display = 'inline-flex';
+        if (this.duplicateBtn) this.duplicateBtn.style.display = 'inline-flex';
         this.open();
     }
 
@@ -186,13 +251,16 @@ class TaskManager {
         }
 
         const id = this.idInput.value || StorageManager.generateId();
+        let category = this.categoryInput ? this.categoryInput.value : 'Geral';
+        if (category === '__new__') category = 'Geral';
+
         const taskData = {
             id,
             title,
             date,
             time: this.timeInput ? this.timeInput.value : '',
             priority: this.priorityInput.value,
-            category: this.categoryInput ? this.categoryInput.value : 'Geral',
+            category,
             completed: this.completedInput.checked,
             notes: this.notesTextarea ? this.notesTextarea.value : ''
         };
@@ -209,6 +277,23 @@ class TaskManager {
         this.close();
     }
 
+    /** Duplica a tarefa aberta atualmente como uma nova tarefa */
+    duplicateActiveTask() {
+        if (!this.activeTask) return;
+        const base = this.activeTask;
+        const newTask = {
+            ...base,
+            id: StorageManager.generateId(),
+            title: `${base.title} (cópia)`,
+            completed: false
+        };
+        this.tasks.push(newTask);
+        StorageManager.saveTasks(this.tasks);
+        this.notify();
+        // Reabre o modal já na nova tarefa
+        this.openForEdit(newTask);
+    }
+
     deleteTask(id) {
         this.tasks = this.tasks.filter(t => t.id !== id);
         StorageManager.saveTasks(this.tasks);
@@ -220,7 +305,6 @@ class TaskManager {
         return this.tasks;
     }
 
-    /** Substitui a lista de tarefas em memória (usado após restaurar um backup) e notifica a UI */
     setTasksExternally(tasks) {
         this.tasks = Array.isArray(tasks) ? tasks : [];
         this.notify();
