@@ -4,16 +4,12 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Flora Planner - Organização e Produtividade</title>
-    <!-- Font Awesome Icons -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <!-- CSS Principal com suporte a temas -->
     <link rel="stylesheet" href="src/styles/theme.css">
-    <!-- Chart.js para relatórios -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
 <body>
     <div class="container">
-        <!-- CABEÇALHO RESTRUCTURADO -->
         <header>
             <div style="display: flex; align-items: center; gap: 15px;">
                 <button class="btn btn-outline" id="hamburger-toggle-btn" title="Abrir Menu (☰)">
@@ -31,7 +27,6 @@
             </div>
         </header>
 
-        <!-- BARRA DE NAVEGAÇÃO E VISUALIZAÇÕES -->
         <div class="date-nav">
             <div class="view-toggle">
                 <button class="toggle-btn" id="btn-year-view">Anual</button>
@@ -50,12 +45,10 @@
             </div>
         </div>
 
-        <!-- VISUALIZAÇÃO ANUAL -->
         <div class="card" id="view-year" style="display:none;">
             <div class="year-grid" id="year-grid"></div>
         </div>
 
-        <!-- VISUALIZAÇÃO MENSAL (CALENDÁRIO PRINCIPAL) -->
         <div class="card" id="view-month">
             <div class="calendar-grid" id="month-grid">
                 <div class="weekday-header">Dom</div>
@@ -68,12 +61,10 @@
             </div>
         </div>
 
-        <!-- VISUALIZAÇÃO SEMANAL -->
         <div class="card" id="view-week" style="display:none;">
             <div class="weekly-grid" id="weekly-grid"></div>
         </div>
 
-        <!-- VISUALIZAÇÃO DE RELATÓRIOS -->
         <div class="card" id="view-reports" style="display:none;">
             <h2 style="margin-bottom:20px; color:var(--cor-titulo);">
                 <i class="fas fa-chart-pie"></i> Uso do Tempo e Produtividade
@@ -98,11 +89,9 @@
         </div>
     </div>
 
-    <!-- MODAL DE CADASTRO/EDIÇÃO DE TAREFAS COM PAINEL POST-IT -->
     <div class="modal" id="task-modal">
         <div class="modal-content">
             <div class="task-modal-layout">
-                <!-- LADO ESQUERDO: Formulário -->
                 <div class="task-modal-form-side">
                     <div class="modal-header">
                         <h2 id="modal-task-title"><i class="fas fa-calendar-plus"></i> Tarefa</h2>
@@ -138,20 +127,21 @@
                                 <label>Categoria</label>
                                 <select class="form-control" id="task-category">
                                     <option value="Geral">Geral</option>
-                                    <option value="Trabalho">Trabalho</option>
-                                    <option value="Estudos">Estudos</option>
-                                    <option value="Pessoal">Pessoal</option>
-                                    <option value="Saúde">Saúde</option>
                                 </select>
                             </div>
                         </div>
                         <div class="form-group" style="margin-top: 15px;">
                             <label><input type="checkbox" id="task-completed"> Marcar como Concluída</label>
                         </div>
-                        <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 25px;">
-                            <button type="button" class="btn btn-danger" id="btn-delete-task" style="display: none;">
-                                <i class="fas fa-trash"></i> Excluir
-                            </button>
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 25px; flex-wrap: wrap; gap: 10px;">
+                            <div style="display: flex; gap: 10px;">
+                                <button type="button" class="btn btn-danger" id="btn-delete-task" style="display: none;">
+                                    <i class="fas fa-trash"></i> Excluir
+                                </button>
+                                <button type="button" class="btn btn-secondary" id="btn-duplicate-task" style="display: none;">
+                                    <i class="fas fa-copy"></i> Duplicar
+                                </button>
+                            </div>
                             <div style="display: flex; gap: 10px; margin-left: auto;">
                                 <button type="button" class="btn btn-secondary" id="btn-cancel-task">Cancelar</button>
                                 <button type="submit" class="btn btn-primary"><i class="fas fa-save"></i> Salvar</button>
@@ -160,7 +150,6 @@
                     </form>
                 </div>
 
-                <!-- LADO DIREITO: Painel Post-it de Anotações -->
                 <div class="task-modal-notes-side" id="notes-panel">
                     <div class="notes-header">
                         <div class="notes-title-row">
@@ -184,10 +173,6 @@
         </div>
     </div>
 
-    <!-- SCRIPTS DA APLICAÇÃO (ordem importa: dependências antes de quem as usa) -->
-    <!-- Usamos scripts globais normais (sem type="module") de propósito: -->
-    <!-- assim o app funciona mesmo abrindo o index.html direto no navegador -->
-    <!-- (duplo clique / file://), sem precisar de servidor local.          -->
     <script src="src/storage/StorageManager.js"></script>
     <script src="src/components/SidebarMenu.js"></script>
     <script src="src/components/SettingsModal.js"></script>
