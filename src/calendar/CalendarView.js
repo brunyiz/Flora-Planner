@@ -1,7 +1,7 @@
 /**
  * CalendarView.js
- * Módulo responsável por renderizar a grade do calendário (Mensal, Semanal, Anual)
- * e o painel de Relatórios.
+ * Renderização do calendário (Mensal/Semanal/Anual) e relatórios.
+ * Badges usam a COR DA CATEGORIA (não mais a prioridade).
  */
 
 class CalendarView {
@@ -10,7 +10,7 @@ class CalendarView {
         this.onDayClick = onDayClick;
         this.onTaskClick = onTaskClick;
         this.currentDate = new Date();
-        this.currentView = 'month'; // 'month' | 'week' | 'year' | 'reports'
+        this.currentView = 'month';
         this.tasks = [];
         this.chartInstance = null;
 
@@ -32,7 +32,6 @@ class CalendarView {
         this.render();
     }
 
-    /** Mantém os botões Anual/Mensal/Semanal/Relatórios do date-nav sincronizados com a view atual */
     syncToggleButtons() {
         const map = {
             year: 'btn-year-view',
@@ -45,7 +44,6 @@ class CalendarView {
             if (btn) btn.classList.toggle('active', view === this.currentView);
         });
 
-        // Esconde a navegação de datas (prev/next/hoje) na tela de relatórios
         const navControls = document.getElementById('nav-controls');
         if (navControls) navControls.style.visibility = this.currentView === 'reports' ? 'hidden' : 'visible';
     }
@@ -68,9 +66,7 @@ class CalendarView {
 
     render() {
         const displayElem = document.getElementById('current-date-display');
-        if (displayElem) {
-            displayElem.textContent = this.getFormattedDateHeader();
-        }
+        if (displayElem) displayElem.textContent = this.getFormattedDateHeader();
 
         const views = ['view-month', 'view-week', 'view-year', 'view-reports'];
         views.forEach(v => {
@@ -83,33 +79,42 @@ class CalendarView {
 
         this.syncToggleButtons();
 
-        if (this.currentView === 'month') {
-            this.renderMonthGrid();
-        } else if (this.currentView === 'week') {
-            this.renderWeekGrid();
-        } else if (this.currentView === 'year') {
-            this.renderYearGrid();
-        } else if (this.currentView === 'reports') {
-            this.renderReports();
-        }
+        if (this.currentView === 'month') this.renderMonthGrid();
+        else if (this.currentView === 'week') this.renderWeekGrid();
+        else if (this.currentView === 'year') this.renderYearGrid();
+        else if (this.currentView === 'reports') this.renderReports();
     }
 
     getFormattedDateHeader() {
         const months = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
-        if (this.currentView === 'year') {
-            return `${this.currentDate.getFullYear()}`;
-        }
-        if (this.currentView === 'reports') {
-            return 'Relatórios';
-        }
+        if (this.currentView === 'year') return `${this.currentDate.getFullYear()}`;
+        if (this.currentView === 'reports') return 'Relatórios';
         return `${months[this.currentDate.getMonth()]} ${this.currentDate.getFullYear()}`;
+    }
+
+    // [NOVO] Aplica cor de fundo da categoria no badge
+    applyCategoryColor(el, categoryName) {
+        const color = StorageManager.getCategoryColor(categoryName || 'Geral');
+        el.style.backgroundColor = color;
+        // Força contraste do texto dependendo do brilho da cor
+        el.style.color = this.isLightColor(color) ? '#1a202c' : '#ffffff';
+    }
+
+    // [NOVO] Verifica se a cor é clara (para escolher texto escuro ou branco)
+    isLightColor(hex) {
+        const h = String(hex).replace('#', '');
+        if (h.length !== 6) return false;
+        const r = parseInt(h.substr(0, 2), 16);
+        const g = parseInt(h.substr(2, 2), 16);
+        const b = parseInt(h.substr(4, 2), 16);
+        // Luminância percebida
+        return (0.299 * r + 0.587 * g + 0.114 * b) > 170;
     }
 
     renderMonthGrid() {
         const monthGrid = document.getElementById('month-grid');
         if (!monthGrid) return;
 
-        // Mantém apenas os cabeçalhos de dia da semana
         monthGrid.innerHTML = `
             <div class="weekday-header">Dom</div>
             <div class="weekday-header">Seg</div>
@@ -127,7 +132,6 @@ class CalendarView {
         const daysInMonth = new Date(year, month + 1, 0).getDate();
         const daysInPrevMonth = new Date(year, month, 0).getDate();
 
-        // Dias do mês anterior
         for (let i = firstDay - 1; i >= 0; i--) {
             const dayNum = daysInPrevMonth - i;
             const dayEl = document.createElement('div');
@@ -136,7 +140,6 @@ class CalendarView {
             monthGrid.appendChild(dayEl);
         }
 
-        // Dias do mês atual
         const today = new Date();
         for (let d = 1; d <= daysInMonth; d++) {
             const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
@@ -146,16 +149,17 @@ class CalendarView {
             dayEl.className = `calendar-day ${isToday ? 'today' : ''}`;
             dayEl.innerHTML = `<span class="day-number">${d}</span>`;
 
-            // Tarefas do dia
             const dayTasks = this.tasks
                 .filter(t => t.date === dateStr)
                 .sort((a, b) => (a.time || '').localeCompare(b.time || ''));
 
             dayTasks.forEach(task => {
                 const badge = document.createElement('div');
-                badge.className = `task-item-badge prio-${task.priority || 'media'} ${task.completed ? 'done' : ''}`;
+                // [ALTERADO] Sem classe de prioridade — cor vem da categoria
+                badge.className = `task-item-badge ${task.completed ? 'done' : ''}`;
                 badge.textContent = task.time ? `${task.time} ${task.title}` : task.title;
-                badge.title = task.title;
+                badge.title = `${task.category || 'Geral'} — ${task.title}`;
+                this.applyCategoryColor(badge, task.category);
                 badge.addEventListener('click', (e) => {
                     e.stopPropagation();
                     if (this.onTaskClick) this.onTaskClick(task);
@@ -170,7 +174,6 @@ class CalendarView {
             monthGrid.appendChild(dayEl);
         }
 
-        // Dias do próximo mês para completar a última semana
         const totalCells = firstDay + daysInMonth;
         const remaining = (7 - (totalCells % 7)) % 7;
         for (let d = 1; d <= remaining; d++) {
@@ -214,9 +217,11 @@ class CalendarView {
 
             dayTasks.forEach(task => {
                 const tBlock = document.createElement('div');
-                tBlock.className = `time-block task prio-${task.priority || 'media'} ${task.completed ? 'done' : ''}`;
+                // [ALTERADO] Cor da categoria em vez de prioridade
+                tBlock.className = `time-block task ${task.completed ? 'done' : ''}`;
                 tBlock.textContent = task.time ? `${task.time} ${task.title}` : task.title;
-                tBlock.title = task.title;
+                tBlock.title = `${task.category || 'Geral'} — ${task.title}`;
+                this.applyCategoryColor(tBlock, task.category);
                 tBlock.addEventListener('click', (e) => {
                     e.stopPropagation();
                     if (this.onTaskClick) this.onTaskClick(task);
@@ -267,11 +272,19 @@ class CalendarView {
 
             for (let d = 1; d <= daysInMonth; d++) {
                 const dateStr = `${year}-${String(monthIdx + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
-                const hasTask = this.tasks.some(t => t.date === dateStr);
+                const dayTasks = this.tasks.filter(t => t.date === dateStr);
+                const hasTask = dayTasks.length > 0;
+
                 const cell = document.createElement('div');
                 cell.className = `mini-month-day ${hasTask ? 'has-task' : ''}`;
                 cell.textContent = d;
-                if (hasTask) cell.title = `${this.tasks.filter(t => t.date === dateStr).length} tarefa(s)`;
+                if (hasTask) {
+                    cell.title = `${dayTasks.length} tarefa(s)`;
+                    // [NOVO] Usa a cor da primeira tarefa do dia
+                    const firstColor = StorageManager.getCategoryColor(dayTasks[0].category || 'Geral');
+                    cell.style.backgroundColor = firstColor;
+                    cell.style.color = this.isLightColor(firstColor) ? '#1a202c' : '#ffffff';
+                }
                 grid.appendChild(cell);
             }
 
@@ -316,7 +329,6 @@ class CalendarView {
             return;
         }
 
-        // Garante que o canvas exista (caso tenha sido substituído pela mensagem vazia)
         if (!wrapper.querySelector('#categoryChart')) {
             wrapper.innerHTML = '<canvas id="categoryChart"></canvas>';
         }
@@ -328,14 +340,12 @@ class CalendarView {
             counts[cat] = (counts[cat] || 0) + 1;
         });
 
-        const palette = ['#D8B4FE', '#D46FA8', '#48BB78', '#ED8936', '#4299E1', '#9F7AEA', '#F56565'];
+        // [NOVO] Cores vêm das categorias configuradas
         const labels = Object.keys(counts);
         const data = Object.values(counts);
-        const colors = labels.map((_, i) => palette[i % palette.length]);
+        const colors = labels.map(name => StorageManager.getCategoryColor(name));
 
-        if (this.chartInstance) {
-            this.chartInstance.destroy();
-        }
+        if (this.chartInstance) this.chartInstance.destroy();
 
         if (typeof Chart === 'undefined') {
             wrapper.innerHTML = '<div class="chart-empty">Não foi possível carregar o gráfico (Chart.js).</div>';
