@@ -682,11 +682,25 @@ class CalendarView {
                 const cell = document.createElement('div');
                 cell.className = `mini-month-day ${hasTask ? 'has-task' : ''} ${markers.length ? 'has-marker' : ''}`;
                 cell.textContent = d;
-                cell.title = 'Clique para ver o dia';
 
+                // ---------- Tooltip inteligente ----------
+                // Prioridade: marcador > contagem de tarefas > nada
                 if (markers.length > 0) {
+                    const markerLabels = markers.map(m => m.label).join(' • ');
+                    const taskInfo = hasTask
+                        ? ` — ${dayTasks.length} tarefa${dayTasks.length === 1 ? '' : 's'}`
+                        : '';
+                    cell.title = `🏷️ ${markerLabels}${taskInfo}`;
+                    // Borda colorida do primeiro marcador
                     cell.style.border = `2px solid ${markers[0].color}`;
+                } else if (hasTask) {
+                    cell.title = `${dayTasks.length} tarefa${dayTasks.length === 1 ? '' : 's'}`;
+                } else {
+                    // Sem nada — não polui com tooltip
+                    cell.title = '';
                 }
+
+                // Cor de fundo = cor da categoria da 1ª tarefa
                 if (hasTask) {
                     const firstColor = StorageManager.getCategoryColor(dayTasks[0].category || 'Geral');
                     cell.style.backgroundColor = firstColor;
