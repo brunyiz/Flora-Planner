@@ -690,7 +690,7 @@ class CalendarView {
                     const taskInfo = hasTask
                         ? ` — ${dayTasks.length} tarefa${dayTasks.length === 1 ? '' : 's'}`
                         : '';
-                    cell.title = `🏷️ ${markerLabels}${taskInfo}`;
+                    cell.title = `${markerLabels}${taskInfo}`;
                     // Borda colorida do primeiro marcador
                     cell.style.border = `2px solid ${markers[0].color}`;
                 } else if (hasTask) {
