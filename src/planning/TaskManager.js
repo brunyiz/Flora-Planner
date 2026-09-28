@@ -1,7 +1,7 @@
 /**
  * TaskManager.js
  * CRUD de tarefas + janela de edição com Post-it.
- * NOVO: hora fim, recorrência (dias + data fim) e ordem manual.
+ * NOVO: completar/excluir ocorrência individual de tarefa recorrente.
  */
 
 class TaskManager {
@@ -9,6 +9,7 @@ class TaskManager {
         this.onTasksUpdated = onTasksUpdated;
         this.tasks = StorageManager.getTasks();
         this.activeTask = null;
+        this.activeInstanceDate = null; // data específica da ocorrência que está sendo editada
 
         this.cacheDOM();
         this.bindEvents();
@@ -32,7 +33,6 @@ class TaskManager {
         this.categoryInput = document.getElementById('task-category');
         this.completedInput = document.getElementById('task-completed');
 
-        // NOVO: recorrência
         this.recurrenceUntilInput = document.getElementById('task-recurrence-until');
         this.recurrenceDayCheckboxes = document.querySelectorAll('.rec-day');
 
@@ -62,11 +62,7 @@ class TaskManager {
         }
 
         if (this.deleteBtn) {
-            this.deleteBtn.addEventListener('click', () => {
-                if (this.activeTask && confirm('Tem certeza que deseja excluir esta tarefa?')) {
-                    this.deleteTask(this.activeTask.id);
-                }
-            });
+            this.deleteBtn.addEventListener('click', () => this.deleteTask());
         }
 
         if (this.duplicateBtn) {
@@ -212,10 +208,16 @@ class TaskManager {
         };
     }
 
+    isTaskRecurring(task) {
+        return !!(task && task.recurrence && Array.isArray(task.recurrence.days) && task.recurrence.days.length > 0);
+    }
+
     /* ------------------ ABRIR / SALVAR ------------------ */
 
     openForNew(dateStr) {
         this.activeTask = null;
+        this.activeInstanceDate = null;
+
         if (this.titleEl) this.titleEl.innerHTML = '<i class="fas fa-calendar-plus"></i> Nova Tarefa';
         if (this.notesTaskLabel) this.notesTaskLabel.textContent = 'Nova Tarefa';
 
@@ -236,10 +238,29 @@ class TaskManager {
         this.open();
     }
 
-    openForEdit(task) {
+    /**
+     * @param {object} task — tarefa a editar
+     * @param {string} [instanceDate] — data específica da ocorrência (recorrência)
+     */
+    openForEdit(task, instanceDate) {
         this.activeTask = task;
-        if (this.titleEl) this.titleEl.innerHTML = '<i class="fas fa-edit"></i> Editar Tarefa';
-        if (this.notesTaskLabel) this.notesTaskLabel.textContent = task.title || 'Tarefa';
+        this.activeInstanceDate = instanceDate || null;
+
+        const isRecurring = this.isTaskRecurring(task);
+
+        if (this.titleEl) {
+            this.titleEl.innerHTML = isRecurring && instanceDate
+                ? '<i class="fas fa-redo"></i> Editar Ocorrência'
+                : '<i class="fas fa-edit"></i> Editar Tarefa';
+        }
+        if (this.notesTaskLabel) {
+            let label = task.title || 'Tarefa';
+            if (isRecurring && instanceDate) {
+                const [y, m, d] = instanceDate.split('-');
+                label += ` — ${d}/${m}`;
+            }
+            this.notesTaskLabel.textContent = label;
+        }
 
         this.idInput.value = task.id;
         this.titleInput.value = task.title;
@@ -248,7 +269,17 @@ class TaskManager {
         if (this.endTimeInput) this.endTimeInput.value = task.endTime || '';
         this.priorityInput.value = task.priority || 'media';
         this.populateCategorySelect(task.category || 'Geral');
-        this.completedInput.checked = !!task.completed;
+
+        // Completude: se estamos editando uma ocorrência, checa o array de datas
+        if (this.completedInput) {
+            if (isRecurring && instanceDate) {
+                const dates = Array.isArray(task.completedDates) ? task.completedDates : [];
+                this.completedInput.checked = dates.includes(instanceDate);
+            } else {
+                this.completedInput.checked = !!task.completed;
+            }
+        }
+
         if (this.notesTextarea) this.notesTextarea.value = task.notes || '';
         this.setRecurrenceFields(task.recurrence || null);
         this.updateCharCount();
@@ -266,6 +297,7 @@ class TaskManager {
     close() {
         if (this.modal) this.modal.style.display = 'none';
         this.activeTask = null;
+        this.activeInstanceDate = null;
     }
 
     saveTask() {
@@ -284,6 +316,9 @@ class TaskManager {
         const existingIndex = this.tasks.findIndex(t => t.id === id);
         const existingTask = existingIndex >= 0 ? this.tasks[existingIndex] : null;
 
+        const recurrence = this.readRecurrenceFromForm();
+        const isRecurring = !!(recurrence && recurrence.days && recurrence.days.length > 0);
+
         const taskData = {
             id,
             title,
@@ -292,12 +327,31 @@ class TaskManager {
             endTime: this.endTimeInput ? this.endTimeInput.value : '',
             priority: this.priorityInput.value,
             category,
-            completed: this.completedInput.checked,
             notes: this.notesTextarea ? this.notesTextarea.value : '',
-            recurrence: this.readRecurrenceFromForm()
+            recurrence,
+            // Preserva os arrays existentes
+            completedDates: Array.isArray(existingTask?.completedDates) ? [...existingTask.completedDates] : [],
+            excludedDates: Array.isArray(existingTask?.excludedDates) ? [...existingTask.excludedDates] : []
         };
 
-        // Preserva ordem manual existente
+        // Regra de completude:
+        // - Se é recorrente E estamos editando uma ocorrência específica → altera completedDates
+        // - Caso contrário → altera completed normalmente
+        if (isRecurring && this.activeInstanceDate) {
+            const dates = new Set(taskData.completedDates);
+            if (this.completedInput.checked) dates.add(this.activeInstanceDate);
+            else dates.delete(this.activeInstanceDate);
+            taskData.completedDates = Array.from(dates);
+            taskData.completed = existingTask ? !!existingTask.completed : false;
+        } else {
+            taskData.completed = this.completedInput.checked;
+            // Se deixou de ser recorrente, limpa arrays
+            if (!isRecurring) {
+                taskData.completedDates = [];
+                taskData.excludedDates = [];
+            }
+        }
+
         if (existingTask && typeof existingTask.order === 'number') {
             taskData.order = existingTask.order;
         }
@@ -320,9 +374,11 @@ class TaskManager {
             ...base,
             id: StorageManager.generateId(),
             title: `${base.title} (cópia)`,
-            completed: false
+            completed: false,
+            completedDates: [],
+            excludedDates: []
         };
-        delete newTask.order; // duplicata ganha nova ordem automática
+        delete newTask.order;
 
         this.tasks.push(newTask);
         StorageManager.saveTasks(this.tasks);
@@ -330,8 +386,42 @@ class TaskManager {
         this.openForEdit(newTask);
     }
 
-    deleteTask(id) {
-        this.tasks = this.tasks.filter(t => t.id !== id);
+    /** Exclui a tarefa OU uma ocorrência específica (se for recorrente + instanceDate) */
+    deleteTask() {
+        if (!this.activeTask) return;
+        const task = this.activeTask;
+        const isRecurring = this.isTaskRecurring(task);
+
+        // Caminho 1: ocorrência individual de tarefa recorrente
+        if (isRecurring && this.activeInstanceDate) {
+            const [y, m, d] = this.activeInstanceDate.split('-');
+            const dateLabel = `${d}/${m}/${y}`;
+
+            const choice = confirm(
+                `⚠️ Esta é uma tarefa RECORRENTE.\n\n` +
+                `✅ OK = Excluir APENAS a ocorrência de ${dateLabel}\n` +
+                `❌ Cancelar = Excluir a SÉRIE INTEIRA (todas as ocorrências)`
+            );
+
+            if (choice) {
+                const idx = this.tasks.findIndex(t => t.id === task.id);
+                if (idx >= 0) {
+                    const dates = new Set(this.tasks[idx].excludedDates || []);
+                    dates.add(this.activeInstanceDate);
+                    this.tasks[idx].excludedDates = Array.from(dates);
+                    StorageManager.saveTasks(this.tasks);
+                    this.notify();
+                    this.close();
+                }
+                return;
+            }
+
+            if (!confirm(`Confirma excluir TODAS as ocorrências de "${task.title}"?`)) return;
+        } else {
+            if (!confirm('Tem certeza que deseja excluir esta tarefa?')) return;
+        }
+
+        this.tasks = this.tasks.filter(t => t.id !== task.id);
         StorageManager.saveTasks(this.tasks);
         this.notify();
         this.close();
@@ -346,7 +436,6 @@ class TaskManager {
         this.notify();
     }
 
-    /** Usado pelo reordenamento do calendário semanal */
     saveExternal(tasks) {
         this.tasks = Array.isArray(tasks) ? tasks : this.tasks;
         StorageManager.saveTasks(this.tasks);
