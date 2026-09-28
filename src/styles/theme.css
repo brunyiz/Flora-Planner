@@ -529,3 +529,294 @@ body.dark-mode .category-remove:hover { background: #7a2222; }
     .settings-tab-btn { flex-shrink: 0; font-size: 0.85rem; padding: 8px 12px; }
     .category-add-row { flex-direction: column; }
 }
+
+/* ==========================================================================
+   ADIÇÕES v3.0 — Hora fim, recorrência, ordenação manual e view Diário
+   ========================================================================== */
+
+/* Formulário: linha de 3 colunas */
+.form-row-3 {
+    display: grid;
+    grid-template-columns: 1.2fr 1fr 1fr;
+    gap: 14px;
+}
+@media (max-width: 640px) {
+    .form-row-3 { grid-template-columns: 1fr; }
+}
+
+/* Bloco de recorrência no formulário */
+.recurrence-block {
+    margin-top: 15px;
+    padding: 12px 14px;
+    border-radius: 10px;
+    background: var(--cinza-claro);
+    border: 1px dashed var(--cor-principal);
+}
+.recurrence-header {
+    font-weight: 600;
+    font-size: 0.85rem;
+    color: var(--cor-titulo);
+    margin-bottom: 10px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+.recurrence-days {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+}
+.recurrence-days label {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-weight: 500;
+    font-size: 0.85rem;
+    cursor: pointer;
+    padding: 4px 8px;
+    border-radius: 8px;
+    transition: background 0.15s;
+}
+.recurrence-days label:hover { background: var(--cor-blocos); }
+
+/* Hora fim no formulário (reaproveita .form-control) */
+#task-end-time { min-width: 0; }
+
+/* ==========================================================================
+   VISÃO SEMANAL — Hint + Sortable
+   ========================================================================== */
+.week-view-hint {
+    font-size: 0.8rem;
+    color: var(--cor-texto-light);
+    padding: 8px 12px;
+    background: var(--cinza-claro);
+    border-radius: 8px;
+    margin-bottom: 14px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+.week-view-hint i { color: var(--cor-principal); }
+
+.week-day-tasks {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    flex: 1;
+    min-height: 40px;
+}
+
+/* Task na visão semanal */
+.week-task {
+    padding: 8px 10px;
+    border-radius: 8px;
+    cursor: grab;
+    user-select: none;
+    border-left: 4px solid rgba(0,0,0,0.15);
+    transition: transform 0.12s, filter 0.12s, box-shadow 0.12s;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.06);
+}
+.week-task:hover { filter: brightness(1.05); transform: translateY(-1px); box-shadow: var(--sombra); }
+.week-task:active { cursor: grabbing; }
+.week-task.done { opacity: 0.6; }
+.week-task.done .week-task-title { text-decoration: line-through; }
+.week-task-time {
+    font-size: 0.72rem;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    opacity: 0.9;
+    margin-bottom: 2px;
+}
+.week-task-time i { font-size: 0.68rem; }
+.week-task-recur-icon {
+    margin-left: auto;
+    font-size: 0.68rem;
+    opacity: 0.85;
+}
+.week-task-title {
+    font-size: 0.82rem;
+    line-height: 1.25;
+    overflow-wrap: anywhere;
+}
+
+/* SortableJS ghost */
+.sortable-ghost {
+    opacity: 0.4;
+    background: var(--cor-principal) !important;
+    color: #fff !important;
+    transform: rotate(1.5deg);
+}
+.sortable-chosen { box-shadow: 0 8px 20px rgba(0,0,0,0.2); }
+.sortable-drag { opacity: 0.95; transform: rotate(2deg); }
+
+/* ==========================================================================
+   VISÃO DIÁRIA
+   ========================================================================== */
+.day-view-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 12px;
+    padding-bottom: 14px;
+    margin-bottom: 18px;
+    border-bottom: 3px solid var(--cor-principal);
+}
+.day-view-header h2 {
+    color: var(--cor-titulo);
+    font-size: 1.4rem;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    text-transform: capitalize;
+    margin: 0;
+}
+.day-view-stats {
+    font-size: 0.85rem;
+    color: var(--cor-texto-light);
+    background: var(--cinza-claro);
+    padding: 6px 12px;
+    border-radius: 20px;
+    font-weight: 600;
+}
+
+.day-view-empty {
+    text-align: center;
+    padding: 60px 20px;
+    color: var(--cor-texto-light);
+}
+.day-view-empty i {
+    font-size: 3rem;
+    color: var(--cor-principal);
+    margin-bottom: 12px;
+    display: block;
+}
+.day-view-empty p { font-size: 1.05rem; margin-bottom: 4px; }
+.day-view-empty small { font-size: 0.85rem; }
+
+.day-tasks-list {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.day-task-item {
+    display: flex;
+    gap: 16px;
+    padding: 14px 16px;
+    background: var(--cor-blocos-alt);
+    border-radius: 10px;
+    border-left: 5px solid var(--cor-principal);
+    cursor: pointer;
+    transition: transform 0.15s, box-shadow 0.15s, background 0.15s;
+}
+.day-task-item:hover {
+    transform: translateX(4px);
+    box-shadow: var(--sombra);
+    background: var(--cor-blocos);
+}
+.day-task-item.done { opacity: 0.65; }
+.day-task-item.done .day-task-title { text-decoration: line-through; }
+
+.day-task-time-col {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 6px;
+    min-width: 110px;
+    flex-shrink: 0;
+}
+.day-task-time {
+    font-weight: 700;
+    font-size: 0.95rem;
+    color: var(--cor-texto);
+    white-space: nowrap;
+}
+.day-task-category-badge {
+    font-size: 0.68rem;
+    padding: 3px 10px;
+    border-radius: 20px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+}
+
+.day-task-content-col { flex: 1; min-width: 0; }
+.day-task-title-row {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+.day-task-title {
+    font-size: 1.05rem;
+    font-weight: 600;
+    color: var(--cor-texto);
+    overflow-wrap: anywhere;
+}
+.recurrence-badge, .completed-badge {
+    font-size: 0.68rem;
+    padding: 3px 8px;
+    border-radius: 12px;
+    font-weight: 600;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+}
+.recurrence-badge {
+    background: rgba(159, 122, 234, 0.15);
+    color: #7c5cbf;
+}
+body.dark-mode .recurrence-badge { background: rgba(159, 122, 234, 0.25); color: #c8b3ff; }
+.completed-badge {
+    background: rgba(72, 187, 120, 0.15);
+    color: #2f855a;
+}
+
+.day-task-notes-block {
+    margin-top: 10px;
+    padding: 10px 12px;
+    background: #FFFBE6;
+    border-left: 3px solid #F5C542;
+    border-radius: 6px;
+}
+body.dark-mode .day-task-notes-block {
+    background: rgba(245, 197, 66, 0.15);
+    border-left-color: #d4a72c;
+}
+.day-task-notes-block .notes-label {
+    font-size: 0.75rem;
+    font-weight: 700;
+    color: #7a6a00;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+    margin-bottom: 4px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+body.dark-mode .day-task-notes-block .notes-label { color: #e0d080; }
+.day-task-notes-block .notes-content {
+    font-size: 0.9rem;
+    color: var(--cor-texto);
+    line-height: 1.5;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+}
+
+@media (max-width: 640px) {
+    .day-task-item { flex-direction: column; gap: 8px; }
+    .day-task-time-col { flex-direction: row; align-items: center; }
+    .day-view-header { flex-direction: column; align-items: flex-start; }
+}
+
+/* ==========================================================================
+   Categorias — pequeno ajuste para o badge alinhado à esquerda
+   ========================================================================== */
+.task-item-badge,
+.week-task,
+.time-block {
+    border-left: 4px solid rgba(0,0,0,0.15);
+}
