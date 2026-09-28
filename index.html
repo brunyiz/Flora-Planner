@@ -1,185 +1,120 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Flora Planner - Organização e Produtividade</title>
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <link rel="stylesheet" href="src/styles/theme.css">
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>🌸 Flora Planner</title>
+<link rel="stylesheet" href="css/theme.css">
+<script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.0/Sortable.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 </head>
 <body>
-    <div class="container">
-        <header>
-            <div style="display: flex; align-items: center; gap: 15px;">
-                <button class="btn btn-outline" id="hamburger-toggle-btn" title="Abrir Menu (☰)">
-                    <i class="fas fa-bars" style="font-size: 1.2rem;"></i>
-                </button>
-                <div>
-                    <h1><i class="fas fa-leaf"></i> Flora Planner</h1>
-                    <div class="tagline">Planejamento simples, intuitivo e organizado</div>
-                </div>
-            </div>
-            <div class="controls-area">
-                <button class="btn btn-primary" id="btn-add-task">
-                    <i class="fas fa-plus"></i> Nova Tarefa
-                </button>
-            </div>
-        </header>
+<header>
+  <h1>🌸 Flora Planner</h1>
+  <div class="toolbar">
+    <button id="btn-prev">‹</button>
+    <button id="btn-today">Hoje</button>
+    <button id="btn-next">›</button>
+    <span id="period-label"></span>
+  </div>
+  <div class="views">
+    <button class="view-btn" data-view="month">Mês</button>
+    <button class="view-btn" data-view="week">Semana</button>
+    <button class="view-btn" data-view="day">Diário</button>
+    <button class="view-btn" data-view="year">Ano</button>
+  </div>
+  <div class="actions">
+    <button id="btn-new-task">+ Nova Tarefa</button>
+    <button id="btn-export-pdf">PDF</button>
+    <button id="btn-export-png">PNG</button>
+  </div>
+</header>
 
-        <div class="date-nav">
-            <div class="view-toggle">
-                <button class="toggle-btn" id="btn-year-view">Anual</button>
-                <button class="toggle-btn active" id="btn-month-view">Mensal</button>
-                <button class="toggle-btn" id="btn-week-view">Semanal</button>
-            </div>
-            <div style="display: flex; align-items: center; gap: 12px;" id="nav-controls">
-                <button class="btn btn-outline" id="btn-prev-date" title="Mês Anterior">
-                    <i class="fas fa-chevron-left"></i>
-                </button>
-                <div class="current-date-display" id="current-date-display">Mês Ano</div>
-                <button class="btn btn-outline" id="btn-next-date" title="Próximo Mês">
-                    <i class="fas fa-chevron-right"></i>
-                </button>
-                <button class="btn btn-secondary" id="btn-today">Hoje</button>
-            </div>
+<main>
+  <section id="view-month" class="view"></section>
+  <section id="view-week" class="view"></section>
+  <section id="view-day" class="view"></section>
+  <section id="view-year" class="view"></section>
+</main>
+
+<div id="task-modal" class="modal" style="display:none;">
+  <div class="modal-content">
+    <h2 id="modal-title">Nova Tarefa</h2>
+    <form id="task-form">
+      <input type="hidden" id="task-id">
+
+      <label>Título
+        <input type="text" id="task-title" required>
+      </label>
+
+      <label>Descrição
+        <input type="text" id="task-description">
+      </label>
+
+      <label>Data
+        <input type="date" id="task-date">
+      </label>
+
+      <label>Hora início
+        <input type="time" id="task-time">
+      </label>
+
+      <label>Hora fim
+        <input type="time" id="task-end-time">
+      </label>
+
+      <label>Categoria
+        <select id="task-category">
+          <option value="aula">Aula</option>
+          <option value="estudo">Estudo</option>
+          <option value="trabalho">Trabalho</option>
+          <option value="pessoal">Pessoal</option>
+          <option value="outro">Outro</option>
+        </select>
+      </label>
+
+      <label>Prioridade
+        <select id="task-priority">
+          <option value="baixa">Baixa</option>
+          <option value="media" selected>Média</option>
+          <option value="alta">Alta</option>
+        </select>
+      </label>
+
+      <label>Anotações
+        <textarea id="task-notes" rows="3"></textarea>
+      </label>
+
+      <fieldset>
+        <legend>Repetir em (dias da semana)</legend>
+        <div class="recurrence-days">
+          <label><input type="checkbox" class="recurrence-day" value="0"> Dom</label>
+          <label><input type="checkbox" class="recurrence-day" value="1"> Seg</label>
+          <label><input type="checkbox" class="recurrence-day" value="2"> Ter</label>
+          <label><input type="checkbox" class="recurrence-day" value="3"> Qua</label>
+          <label><input type="checkbox" class="recurrence-day" value="4"> Qui</label>
+          <label><input type="checkbox" class="recurrence-day" value="5"> Sex</label>
+          <label><input type="checkbox" class="recurrence-day" value="6"> Sáb</label>
         </div>
+        <label style="margin-top:8px;">Repetir até
+          <input type="date" id="task-recurrence-until">
+        </label>
+      </fieldset>
 
-        <div class="card" id="view-year" style="display:none;">
-            <div class="year-grid" id="year-grid"></div>
-        </div>
+      <div class="modal-actions">
+        <button type="button" id="btn-delete-task" style="display:none;">Excluir</button>
+        <button type="button" id="btn-cancel-task">Cancelar</button>
+        <button type="submit">Salvar</button>
+      </div>
+    </form>
+  </div>
+</div>
 
-        <div class="card" id="view-month">
-            <div class="calendar-grid" id="month-grid">
-                <div class="weekday-header">Dom</div>
-                <div class="weekday-header">Seg</div>
-                <div class="weekday-header">Ter</div>
-                <div class="weekday-header">Qua</div>
-                <div class="weekday-header">Qui</div>
-                <div class="weekday-header">Sex</div>
-                <div class="weekday-header">Sáb</div>
-            </div>
-        </div>
-
-        <div class="card" id="view-week" style="display:none;">
-            <div class="weekly-grid" id="weekly-grid"></div>
-        </div>
-
-        <div class="card" id="view-reports" style="display:none;">
-            <h2 style="margin-bottom:20px; color:var(--cor-titulo);">
-                <i class="fas fa-chart-pie"></i> Uso do Tempo e Produtividade
-            </h2>
-            <div class="dashboard-grid">
-                <div>
-                    <div class="stat-card" style="margin-bottom:20px;" id="stat-hours-card">
-                        <h3>Total de Tarefas Cadastradas</h3>
-                        <div class="stat-value" id="stat-total-tasks">0</div>
-                        <small style="color:var(--cor-texto-light);">Cadastros ativos</small>
-                    </div>
-                    <div class="stat-card" id="stat-completed-card">
-                        <h3>Taxa de Conclusão</h3>
-                        <div class="stat-value" id="stat-completed-rate">0%</div>
-                        <small style="color:var(--cor-texto-light);">Tarefas marcadas como concluídas</small>
-                    </div>
-                </div>
-                <div class="chart-container" id="chart-wrapper">
-                    <canvas id="categoryChart"></canvas>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <div class="modal" id="task-modal">
-        <div class="modal-content">
-            <div class="task-modal-layout">
-                <div class="task-modal-form-side">
-                    <div class="modal-header">
-                        <h2 id="modal-task-title"><i class="fas fa-calendar-plus"></i> Tarefa</h2>
-                        <button class="close-btn" id="close-task-modal">&times;</button>
-                    </div>
-                    <form id="task-form">
-                        <input type="hidden" id="task-id">
-                        <div class="form-group">
-                            <label>Título da Tarefa *</label>
-                            <input type="text" class="form-control" id="task-title" required placeholder="Ex: Reunião de Planejamento">
-                        </div>
-                        <div class="form-row">
-                            <div class="form-group">
-                                <label>Data *</label>
-                                <input type="date" class="form-control" id="task-date" required>
-                            </div>
-                            <div class="form-group">
-                                <label>Horário</label>
-                                <input type="time" class="form-control" id="task-time">
-                            </div>
-                        </div>
-                        <div class="form-row">
-                            <div class="form-group">
-                                <label>Prioridade</label>
-                                <select class="form-control" id="task-priority">
-                                    <option value="baixa">Baixa</option>
-                                    <option value="media" selected>Média</option>
-                                    <option value="alta">Alta</option>
-                                    <option value="urgente">Urgente</option>
-                                </select>
-                            </div>
-                            <div class="form-group">
-                                <label>Categoria</label>
-                                <select class="form-control" id="task-category">
-                                    <option value="Geral">Geral</option>
-                                </select>
-                            </div>
-                        </div>
-                        <div class="form-group" style="margin-top: 15px;">
-                            <label><input type="checkbox" id="task-completed"> Marcar como Concluída</label>
-                        </div>
-                        <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 25px; flex-wrap: wrap; gap: 10px;">
-                            <div style="display: flex; gap: 10px;">
-                                <button type="button" class="btn btn-danger" id="btn-delete-task" style="display: none;">
-                                    <i class="fas fa-trash"></i> Excluir
-                                </button>
-                                <button type="button" class="btn btn-secondary" id="btn-duplicate-task" style="display: none;">
-                                    <i class="fas fa-copy"></i> Duplicar
-                                </button>
-                            </div>
-                            <div style="display: flex; gap: 10px; margin-left: auto;">
-                                <button type="button" class="btn btn-secondary" id="btn-cancel-task">Cancelar</button>
-                                <button type="submit" class="btn btn-primary"><i class="fas fa-save"></i> Salvar</button>
-                            </div>
-                        </div>
-                    </form>
-                </div>
-
-                <div class="task-modal-notes-side" id="notes-panel">
-                    <div class="notes-header">
-                        <div class="notes-title-row">
-                            <span class="notes-title">📝 Anotações</span>
-                            <span class="notes-task-name" id="notes-task-label">Nova Tarefa</span>
-                        </div>
-                    </div>
-                    <div class="notes-toolbar">
-                        <button type="button" class="notes-tool-btn" id="btn-note-check" title="Inserir item de checklist"><i class="fas fa-check-square"></i> Check</button>
-                        <button type="button" class="notes-tool-btn" id="btn-note-bold" title="Negrito simples"><b>B</b></button>
-                        <button type="button" class="notes-tool-btn" id="btn-note-clear" title="Limpar notas"><i class="fas fa-eraser"></i></button>
-                    </div>
-                    <div class="notes-body">
-                        <textarea class="notes-textarea" id="notes-textarea" placeholder="Observações, checklists e detalhes da tarefa..."></textarea>
-                    </div>
-                    <div class="notes-footer">
-                        <span class="notes-char-count" id="notes-char-count">0 caracteres</span>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <script src="src/storage/StorageManager.js"></script>
-    <script src="src/components/SidebarMenu.js"></script>
-    <script src="src/components/SettingsModal.js"></script>
-    <script src="src/components/TutorialModal.js"></script>
-    <script src="src/calendar/CalendarView.js"></script>
-    <script src="src/planning/TaskManager.js"></script>
-    <script src="src/pdf/PdfExporter.js"></script>
-    <script src="src/main.js"></script>
+<script src="js/StorageManager.js"></script>
+<script src="js/TaskManager.js"></script>
+<script src="js/CalendarView.js"></script>
+<script src="js/PdfExporter.js"></script>
+<script src="js/main.js"></script>
 </body>
 </html>
