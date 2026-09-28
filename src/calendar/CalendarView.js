@@ -1,17 +1,25 @@
 /**
  * CalendarView.js
- * Renderização do calendário (Mensal/Semanal/Anual) e relatórios.
- * Badges usam a COR DA CATEGORIA (não mais a prioridade).
+ * Renderização do calendário (Mensal/Semanal/Diário/Anual) e relatórios.
+ * NOVO: Suporte a recorrência, hora fim, ordenação manual (SortableJS) e visualização diária.
  */
 
 class CalendarView {
-    constructor(_ignored, { onTaskClick, onTasksUpdated, onNewTask }) {
+    constructor({ containerId, onDayClick, onTaskClick, onTasksUpdated }) {
+        this.containerId = containerId;
+        this.onDayClick = onDayClick;
         this.onTaskClick = onTaskClick;
         this.onTasksUpdated = onTasksUpdated;
-        this.onNewTask = onNewTask;
-        this.tasks = [];
         this.currentDate = new Date();
         this.currentView = 'month';
+        this.tasks = [];
+        this.chartInstance = null;
+
+        this.initDOM();
+    }
+
+    initDOM() {
+        this.container = document.getElementById(this.containerId);
     }
 
     setTasks(tasks) {
@@ -21,218 +29,336 @@ class CalendarView {
 
     setView(view) {
         this.currentView = view;
+        this.syncToggleButtons();
         this.render();
     }
 
-    setDate(date) {
-        this.currentDate = date;
+    syncToggleButtons() {
+        const map = {
+            year: 'btn-year-view',
+            month: 'btn-month-view',
+            week: 'btn-week-view',
+            day: 'btn-day-view',
+            reports: 'btn-reports-view'
+        };
+        Object.entries(map).forEach(([view, id]) => {
+            const btn = document.getElementById(id);
+            if (btn) btn.classList.toggle('active', view === this.currentView);
+        });
+
+        const navControls = document.getElementById('nav-controls');
+        if (navControls) navControls.style.visibility = this.currentView === 'reports' ? 'hidden' : 'visible';
+    }
+
+    navigate(direction) {
+        if (this.currentView === 'month') {
+            this.currentDate.setMonth(this.currentDate.getMonth() + direction);
+        } else if (this.currentView === 'week') {
+            this.currentDate.setDate(this.currentDate.getDate() + (direction * 7));
+        } else if (this.currentView === 'year') {
+            this.currentDate.setFullYear(this.currentDate.getFullYear() + direction);
+        } else if (this.currentView === 'day') {
+            this.currentDate.setDate(this.currentDate.getDate() + direction);
+        }
+        this.render();
+    }
+
+    goToToday() {
+        this.currentDate = new Date();
         this.render();
     }
 
     render() {
-        document.querySelectorAll('.view').forEach(el => el.style.display = 'none');
-        const container = document.getElementById(`view-${this.currentView}`);
-        if (container) container.style.display = 'block';
+        const displayElem = document.getElementById('current-date-display');
+        if (displayElem) displayElem.textContent = this.getFormattedDateHeader();
 
-        switch (this.currentView) {
-            case 'month': this.renderMonth(); break;
-            case 'week': this.renderWeek(); break;
-            case 'day': this.renderDay(); break;
-            case 'year': this.renderYear(); break;
-        }
+        const views = ['view-month', 'view-week', 'view-day', 'view-year', 'view-reports'];
+        views.forEach(v => {
+            const el = document.getElementById(v);
+            if (el) el.style.display = 'none';
+        });
 
-        const label = document.getElementById('period-label');
-        if (label) label.textContent = this.getPeriodLabel();
+        const activeViewEl = document.getElementById(`view-${this.currentView}`);
+        if (activeViewEl) activeViewEl.style.display = 'block';
+
+        this.syncToggleButtons();
+
+        if (this.currentView === 'month') this.renderMonthGrid();
+        else if (this.currentView === 'week') this.renderWeekGrid();
+        else if (this.currentView === 'day') this.renderDayView();
+        else if (this.currentView === 'year') this.renderYearGrid();
+        else if (this.currentView === 'reports') this.renderReports();
     }
 
-    getPeriodLabel() {
-        const d = this.currentDate;
-        const months = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho',
-                        'Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
-        if (this.currentView === 'month') return `${months[d.getMonth()]} ${d.getFullYear()}`;
-        if (this.currentView === 'year') return `${d.getFullYear()}`;
-        if (this.currentView === 'week') {
-            const { start, end } = this.getWeekRange(d);
-            return `${start.getDate()}/${start.getMonth()+1} – ${end.getDate()}/${end.getMonth()+1} ${end.getFullYear()}`;
-        }
+    getFormattedDateHeader() {
+        const months = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
+        if (this.currentView === 'year') return `${this.currentDate.getFullYear()}`;
+        if (this.currentView === 'reports') return 'Relatórios';
         if (this.currentView === 'day') {
-            return d.toLocaleDateString('pt-BR', {
-                weekday: 'long', day: 'numeric', month: 'long', year: 'numeric'
-            });
+            const wd = this.currentDate.toLocaleDateString('pt-BR', { weekday: 'long' });
+            return `${wd.charAt(0).toUpperCase() + wd.slice(1)}, ${this.currentDate.getDate()} de ${months[this.currentDate.getMonth()]}`;
         }
-        return '';
+        return `${months[this.currentDate.getMonth()]} ${this.currentDate.getFullYear()}`;
     }
 
-    toDateString(date) {
+    applyCategoryColor(el, categoryName) {
+        const color = StorageManager.getCategoryColor(categoryName || 'Geral');
+        el.style.backgroundColor = color;
+        el.style.color = this.isLightColor(color) ? '#1a202c' : '#ffffff';
+    }
+
+    isLightColor(hex) {
+        const h = String(hex).replace('#', '');
+        if (h.length !== 6) return false;
+        const r = parseInt(h.substr(0, 2), 16);
+        const g = parseInt(h.substr(2, 2), 16);
+        const b = parseInt(h.substr(4, 2), 16);
+        return (0.299 * r + 0.587 * g + 0.114 * b) > 170;
+    }
+
+    /* ------------- HELPERS DE DATA / TAREFA ------------- */
+
+    formatDateStr(date) {
         const y = date.getFullYear();
         const m = String(date.getMonth() + 1).padStart(2, '0');
         const d = String(date.getDate()).padStart(2, '0');
         return `${y}-${m}-${d}`;
     }
 
-    getWeekRange(date) {
-        const d = new Date(date);
-        const day = d.getDay();
-        const start = new Date(d);
-        start.setDate(d.getDate() - day);
-        start.setHours(0, 0, 0, 0);
-        const end = new Date(start);
-        end.setDate(start.getDate() + 6);
-        end.setHours(23, 59, 59, 999);
-        return { start, end };
+    escapeHtml(str) {
+        return String(str ?? '').replace(/[&<>"']/g, (c) => ({
+            '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+        }[c]));
     }
 
     /**
-     * Retorna todas as tarefas aplicáveis a uma data específica,
-     * considerando recorrência e ordenando por order.
+     * Verifica se uma tarefa aparece em determinada data,
+     * considerando recorrência.
+     */
+    taskMatchesDate(task, dateStr, dateObj, dow) {
+        // Tarefa normal, data exata
+        if (task.date === dateStr && !task.recurrence) return true;
+
+        if (task.recurrence && Array.isArray(task.recurrence.days) && task.recurrence.days.length > 0) {
+            if (task.recurrence.until) {
+                const until = new Date(task.recurrence.until + 'T23:59:59');
+                if (dateObj > until) return false;
+            }
+            if (task.date) {
+                const start = new Date(task.date + 'T00:00:00');
+                if (dateObj < start) return false;
+            }
+            return task.recurrence.days.includes(dow);
+        }
+
+        // Tarefa normal (sem recorrência) em outra data — não aparece
+        return false;
+    }
+
+    /**
+     * Retorna tarefas do dia, aplicando:
+     *  - recorrência
+     *  - ordenação manual (order) com fallback para horário
      */
     getTasksForDate(dateStr) {
-        const date = new Date(dateStr + 'T00:00:00');
-        const dow = date.getDay();
-        return this.tasks
-            .filter(task => {
-                // tarefa simples naquele dia
-                if (task.date === dateStr) return true;
+        const dateObj = new Date(dateStr + 'T00:00:00');
+        const dow = dateObj.getDay();
 
-                // tarefa recorrente
-                if (task.recurrence && task.recurrence.days) {
-                    if (task.recurrence.until) {
-                        const until = new Date(task.recurrence.until + 'T23:59:59');
-                        if (date > until) return false;
-                    }
-                    if (task.date) {
-                        const start = new Date(task.date + 'T00:00:00');
-                        if (date < start) return false;
-                    }
-                    return task.recurrence.days.includes(dow);
-                }
-                return false;
-            })
-            .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+        const filtered = this.tasks.filter(t => this.taskMatchesDate(t, dateStr, dateObj, dow));
+
+        filtered.sort((a, b) => {
+            const aHas = typeof a.order === 'number';
+            const bHas = typeof b.order === 'number';
+            if (aHas && bHas) {
+                if (a.order !== b.order) return a.order - b.order;
+            } else if (aHas) {
+                return -1;
+            } else if (bHas) {
+                return 1;
+            }
+            return (a.time || '99:99').localeCompare(b.time || '99:99');
+        });
+
+        return filtered;
     }
 
-    /* ============ MONTH ============ */
-    renderMonth() {
-        const container = document.getElementById('view-month');
+    /* ------------------- MONTH ------------------- */
+
+    renderMonthGrid() {
+        const monthGrid = document.getElementById('month-grid');
+        if (!monthGrid) return;
+
+        monthGrid.innerHTML = `
+            <div class="weekday-header">Dom</div>
+            <div class="weekday-header">Seg</div>
+            <div class="weekday-header">Ter</div>
+            <div class="weekday-header">Qua</div>
+            <div class="weekday-header">Qui</div>
+            <div class="weekday-header">Sex</div>
+            <div class="weekday-header">Sáb</div>
+        `;
+
         const year = this.currentDate.getFullYear();
         const month = this.currentDate.getMonth();
-        const firstDay = new Date(year, month, 1);
-        const lastDay = new Date(year, month + 1, 0);
-        const startDow = firstDay.getDay();
-        const totalDays = lastDay.getDate();
-        const today = this.toDateString(new Date());
 
-        let html = '<div class="month-grid">';
-        ['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'].forEach(d => {
-            html += `<div class="month-header">${d}</div>`;
-        });
+        const firstDay = new Date(year, month, 1).getDay();
+        const daysInMonth = new Date(year, month + 1, 0).getDate();
+        const daysInPrevMonth = new Date(year, month, 0).getDate();
 
-        for (let i = 0; i < startDow; i++) html += '<div class="month-cell empty"></div>';
-
-        for (let day = 1; day <= totalDays; day++) {
-            const dateStr = `${year}-${String(month+1).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
-            const dayTasks = this.getTasksForDate(dateStr);
-            const isToday = dateStr === today;
-
-            html += `<div class="month-cell ${isToday ? 'today' : ''}" data-date="${dateStr}">
-                <div class="month-day-num">${day}</div>
-                <div class="month-tasks">
-                    ${dayTasks.slice(0, 3).map(t => `
-                        <div class="month-task cat-${t.category}" data-task-id="${t.id}">
-                            ${t.time ? t.time + ' ' : ''}${this.escape(t.title)}
-                        </div>
-                    `).join('')}
-                    ${dayTasks.length > 3 ? `<div class="more">+${dayTasks.length - 3}</div>` : ''}
-                </div>
-            </div>`;
+        for (let i = firstDay - 1; i >= 0; i--) {
+            const dayNum = daysInPrevMonth - i;
+            const dayEl = document.createElement('div');
+            dayEl.className = 'calendar-day other-month';
+            dayEl.innerHTML = `<span class="day-number">${dayNum}</span>`;
+            monthGrid.appendChild(dayEl);
         }
-        html += '</div>';
-        container.innerHTML = html;
 
-        container.querySelectorAll('.month-task').forEach(el => {
-            el.addEventListener('click', (e) => {
-                e.stopPropagation();
-                const task = this.tasks.find(t => t.id === el.dataset.taskId);
-                if (task && this.onTaskClick) this.onTaskClick(task);
+        const today = new Date();
+        for (let d = 1; d <= daysInMonth; d++) {
+            const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+            const isToday = today.getFullYear() === year && today.getMonth() === month && today.getDate() === d;
+
+            const dayEl = document.createElement('div');
+            dayEl.className = `calendar-day ${isToday ? 'today' : ''}`;
+            dayEl.innerHTML = `<span class="day-number">${d}</span>`;
+
+            const dayTasks = this.getTasksForDate(dateStr);
+
+            dayTasks.forEach(task => {
+                const badge = document.createElement('div');
+                badge.className = `task-item-badge ${task.completed ? 'done' : ''}`;
+                const timePrefix = task.time
+                    ? (task.endTime ? `${task.time}-${task.endTime} ` : `${task.time} `)
+                    : '';
+                badge.textContent = `${timePrefix}${task.title}`;
+                badge.title = `${task.category || 'Geral'} — ${task.title}`;
+                this.applyCategoryColor(badge, task.category);
+                badge.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    if (this.onTaskClick) this.onTaskClick(task);
+                });
+                dayEl.appendChild(badge);
             });
-        });
-        container.querySelectorAll('.month-cell[data-date]').forEach(el => {
-            el.addEventListener('click', () => {
-                if (this.onNewTask) this.onNewTask(el.dataset.date);
+
+            dayEl.addEventListener('click', () => {
+                if (this.onDayClick) this.onDayClick(dateStr);
             });
-        });
+
+            monthGrid.appendChild(dayEl);
+        }
+
+        const totalCells = firstDay + daysInMonth;
+        const remaining = (7 - (totalCells % 7)) % 7;
+        for (let d = 1; d <= remaining; d++) {
+            const dayEl = document.createElement('div');
+            dayEl.className = 'calendar-day other-month';
+            dayEl.innerHTML = `<span class="day-number">${d}</span>`;
+            monthGrid.appendChild(dayEl);
+        }
     }
 
-    /* ============ WEEK ============ */
-    renderWeek() {
-        const container = document.getElementById('view-week');
-        const { start } = this.getWeekRange(this.currentDate);
-        const today = this.toDateString(new Date());
-        const days = [];
+    /* ------------------- WEEK ------------------- */
+
+    renderWeekGrid() {
+        const weeklyGrid = document.getElementById('weekly-grid');
+        if (!weeklyGrid) return;
+        weeklyGrid.innerHTML = '';
+
+        const startOfWeek = new Date(this.currentDate);
+        startOfWeek.setDate(this.currentDate.getDate() - this.currentDate.getDay());
+
+        const days = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
+        const today = new Date();
+
         for (let i = 0; i < 7; i++) {
-            const d = new Date(start);
-            d.setDate(start.getDate() + i);
-            days.push(d);
+            const day = new Date(startOfWeek);
+            day.setDate(startOfWeek.getDate() + i);
+            const dateStr = this.formatDateStr(day);
+            const isToday = today.toDateString() === day.toDateString();
+
+            const col = document.createElement('div');
+            col.className = `week-day-column ${isToday ? 'today' : ''}`;
+
+            const header = document.createElement('div');
+            header.className = 'week-day-header';
+            header.innerHTML = `
+                <div class="week-day-name">${days[i]}</div>
+                <div class="week-day-date">${day.getDate()}</div>
+            `;
+            col.appendChild(header);
+
+            const tasksContainer = document.createElement('div');
+            tasksContainer.className = 'week-day-tasks';
+            tasksContainer.dataset.date = dateStr;
+
+            const dayTasks = this.getTasksForDate(dateStr);
+            dayTasks.forEach(task => {
+                const tBlock = document.createElement('div');
+                tBlock.className = `week-task ${task.completed ? 'done' : ''}`;
+                tBlock.dataset.taskId = task.id;
+                tBlock.dataset.recurring = task.recurrence ? 'true' : 'false';
+
+                const timeStr = task.time
+                    ? (task.endTime ? `${task.time} - ${task.endTime}` : task.time)
+                    : 'Sem horário';
+
+                tBlock.innerHTML = `
+                    <div class="week-task-time">
+                        <i class="fas fa-clock"></i> ${timeStr}
+                        ${task.recurrence ? '<i class="fas fa-redo week-task-recur-icon" title="Tarefa recorrente"></i>' : ''}
+                    </div>
+                    <div class="week-task-title">${this.escapeHtml(task.title)}</div>
+                `;
+                this.applyCategoryColor(tBlock, task.category);
+
+                tBlock.addEventListener('click', (e) => {
+                    // Ignora cliques após um drag (sortable já cuida disso)
+                    if (tBlock.classList.contains('sortable-chosen') || tBlock.classList.contains('sortable-ghost')) return;
+                    e.stopPropagation();
+                    if (this.onTaskClick) this.onTaskClick(task);
+                });
+
+                tasksContainer.appendChild(tBlock);
+            });
+
+            col.appendChild(tasksContainer);
+
+            header.addEventListener('click', () => {
+                if (this.onDayClick) this.onDayClick(dateStr);
+            });
+
+            weeklyGrid.appendChild(col);
         }
 
-        let html = '<div class="week-grid">';
-        days.forEach(d => {
-            const dateStr = this.toDateString(d);
-            const isToday = dateStr === today;
-            html += `<div class="week-col ${isToday ? 'today' : ''}" data-date="${dateStr}">
-                <div class="week-col-header">
-                    <div class="week-day-name">${d.toLocaleDateString('pt-BR', { weekday: 'short' })}</div>
-                    <div class="week-day-num">${d.getDate()}</div>
-                </div>
-                <div class="week-day-tasks" data-date="${dateStr}"></div>
-            </div>`;
-        });
-        html += '</div>';
-        container.innerHTML = html;
-
-        days.forEach(d => {
-            const dateStr = this.toDateString(d);
-            const tasksEl = container.querySelector(`.week-day-tasks[data-date="${dateStr}"]`);
-            const dayTasks = this.getTasksForDate(dateStr);
-            tasksEl.innerHTML = dayTasks.map(t => `
-                <div class="week-task cat-${t.category} prio-${t.priority} ${t.completed ? 'done' : ''}"
-                     data-task-id="${t.id}">
-                    <div class="week-task-time">${t.time || '--:--'}${t.endTime ? ' - ' + t.endTime : ''}</div>
-                    <div class="week-task-title">${this.escape(t.title)}</div>
-                    ${t.recurrence ? '<div class="week-task-recur">🔁</div>' : ''}
-                </div>
-            `).join('');
-        });
-
-        container.querySelectorAll('.week-task').forEach(el => {
-            el.addEventListener('click', () => {
-                const task = this.tasks.find(t => t.id === el.dataset.taskId);
-                if (task && this.onTaskClick) this.onTaskClick(task);
-            });
-        });
-
+        // Inicializa SortableJS em cada coluna
         if (window.Sortable) {
-            container.querySelectorAll('.week-day-tasks').forEach(el => {
+            weeklyGrid.querySelectorAll('.week-day-tasks').forEach(el => {
                 new Sortable(el, {
                     group: 'week-tasks',
                     animation: 150,
                     ghostClass: 'sortable-ghost',
-                    onEnd: (evt) => this.handleReorder(evt)
+                    chosenClass: 'sortable-chosen',
+                    dragClass: 'sortable-drag',
+                    onEnd: (evt) => this.handleWeekReorder(evt)
                 });
             });
         }
     }
 
-    handleReorder(evt) {
+    handleWeekReorder(evt) {
         const targetDate = evt.to.dataset.date;
-        const orderedIds = Array.from(evt.to.children).map(el => el.dataset.taskId);
+        const orderedIds = Array.from(evt.to.children)
+            .map(el => el.dataset.taskId)
+            .filter(Boolean);
 
         orderedIds.forEach((id, idx) => {
             const task = this.tasks.find(t => t.id === id);
             if (!task) return;
+
             task.order = idx;
-            // Se moveu para outro dia e não é recorrente, atualiza a data
-            if (task.date !== targetDate && !task.recurrence) {
+
+            // Se mudou de coluna e NÃO é recorrente, atualiza a data
+            if (!task.recurrence && task.date !== targetDate) {
                 task.date = targetDate;
             }
         });
@@ -240,105 +366,224 @@ class CalendarView {
         if (this.onTasksUpdated) this.onTasksUpdated(this.tasks);
     }
 
-    /* ============ DAY ============ */
-    renderDay() {
-        const container = document.getElementById('view-day');
-        const dateStr = this.toDateString(this.currentDate);
+    /* ------------------- DAY ------------------- */
+
+    renderDayView() {
+        const container = document.getElementById('day-view-content');
+        if (!container) return;
+
+        const d = this.currentDate;
+        const dateStr = this.formatDateStr(d);
         const dayTasks = this.getTasksForDate(dateStr);
 
-        const header = `
-            <div class="day-header">
-                <h2>${this.currentDate.toLocaleDateString('pt-BR', {
-                    weekday: 'long', day: 'numeric', month: 'long', year: 'numeric'
-                })}</h2>
-                <button class="btn-add-day" data-date="${dateStr}">+ Nova Tarefa</button>
+        const weekday = d.toLocaleDateString('pt-BR', { weekday: 'long' });
+        const weekdayCap = weekday.charAt(0).toUpperCase() + weekday.slice(1);
+        const fullDate = d.toLocaleDateString('pt-BR', { day: 'numeric', month: 'long', year: 'numeric' });
+
+        let html = `
+            <div class="day-view-header">
+                <h2><i class="fas fa-calendar-day"></i> ${weekdayCap}, ${fullDate}</h2>
+                <div class="day-view-stats">
+                    ${dayTasks.length} tarefa${dayTasks.length === 1 ? '' : 's'} programada${dayTasks.length === 1 ? '' : 's'}
+                </div>
             </div>
         `;
 
-        const tasksHtml = dayTasks.length === 0
-            ? '<p class="empty-msg">Nenhuma tarefa para este dia.</p>'
-            : dayTasks.map(t => `
-                <div class="day-task cat-${t.category} prio-${t.priority} ${t.completed ? 'done' : ''}"
-                     data-task-id="${t.id}">
-                    <div class="day-task-time">
-                        <span class="time">${t.time || '--:--'}</span>
-                        ${t.endTime ? `<span class="time-end">→ ${t.endTime}</span>` : ''}
-                    </div>
-                    <div class="day-task-body">
-                        <div class="day-task-title">${this.escape(t.title)}</div>
-                        ${t.description ? `<div class="day-task-desc">${this.escape(t.description)}</div>` : ''}
-                        ${t.notes ? `<div class="day-task-notes"><strong>📝 Anotações:</strong> ${this.escape(t.notes).replace(/\n/g, '<br>')}</div>` : ''}
-                        ${t.recurrence ? `<div class="day-task-recur">🔁 ${this.describeRecurrence(t.recurrence)}</div>` : ''}
-                    </div>
+        if (dayTasks.length === 0) {
+            html += `
+                <div class="day-view-empty">
+                    <i class="fas fa-mug-hot"></i>
+                    <p>Nenhuma tarefa para este dia.</p>
+                    <small>Clique em "Nova Tarefa" ou em um dia na visão mensal para adicionar.</small>
                 </div>
-            `).join('');
+            `;
+        } else {
+            html += '<div class="day-tasks-list">';
+            dayTasks.forEach(task => {
+                const color = StorageManager.getCategoryColor(task.category || 'Geral');
+                const textColor = this.isLightColor(color) ? '#1a202c' : '#ffffff';
+                const timeRange = task.time
+                    ? `${task.time}${task.endTime ? ' – ' + task.endTime : ''}`
+                    : 'Sem horário';
 
-        container.innerHTML = header + `<div class="day-tasks-list">${tasksHtml}</div>`;
+                const notesHtml = task.notes
+                    ? `<div class="day-task-notes-block">
+                            <div class="notes-label"><i class="fas fa-sticky-note"></i> Anotações</div>
+                            <div class="notes-content">${this.escapeHtml(task.notes).replace(/\n/g, '<br>')}</div>
+                       </div>`
+                    : '';
 
-        container.querySelectorAll('.day-task').forEach(el => {
+                html += `
+                    <div class="day-task-item ${task.completed ? 'done' : ''}"
+                         data-task-id="${task.id}"
+                         style="border-left-color: ${color};">
+                        <div class="day-task-time-col">
+                            <div class="day-task-time">${timeRange}</div>
+                            <div class="day-task-category-badge"
+                                 style="background:${color}; color:${textColor};">
+                                ${this.escapeHtml(task.category || 'Geral')}
+                            </div>
+                        </div>
+                        <div class="day-task-content-col">
+                            <div class="day-task-title-row">
+                                <span class="day-task-title">${this.escapeHtml(task.title)}</span>
+                                ${task.recurrence ? '<span class="recurrence-badge" title="Tarefa recorrente"><i class="fas fa-redo"></i> Recorrente</span>' : ''}
+                                ${task.completed ? '<span class="completed-badge"><i class="fas fa-check"></i> Concluída</span>' : ''}
+                            </div>
+                            ${notesHtml}
+                        </div>
+                    </div>
+                `;
+            });
+            html += '</div>';
+        }
+
+        container.innerHTML = html;
+
+        container.querySelectorAll('.day-task-item').forEach(el => {
             el.addEventListener('click', () => {
                 const task = this.tasks.find(t => t.id === el.dataset.taskId);
                 if (task && this.onTaskClick) this.onTaskClick(task);
             });
         });
-        const addBtn = container.querySelector('.btn-add-day');
-        if (addBtn && this.onNewTask) {
-            addBtn.addEventListener('click', () => this.onNewTask(dateStr));
-        }
     }
 
-    describeRecurrence(rec) {
-        const names = ['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'];
-        const days = rec.days.map(d => names[d]).join(', ');
-        return rec.until ? `${days} até ${rec.until}` : days;
-    }
+    /* ------------------- YEAR ------------------- */
 
-    /* ============ YEAR ============ */
-    renderYear() {
-        const container = document.getElementById('view-year');
+    renderYearGrid() {
+        const yearGrid = document.getElementById('year-grid');
+        if (!yearGrid) return;
+        yearGrid.innerHTML = '';
+
         const year = this.currentDate.getFullYear();
-        const months = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
-        const today = new Date();
+        const monthNames = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
+        const weekLetters = ['D','S','T','Q','Q','S','S'];
 
-        let html = '<div class="year-grid">';
-        for (let m = 0; m < 12; m++) {
-            const firstDay = new Date(year, m, 1);
-            const lastDay = new Date(year, m + 1, 0);
-            const startDow = firstDay.getDay();
-            const totalDays = lastDay.getDate();
+        monthNames.forEach((mName, monthIdx) => {
+            const mDiv = document.createElement('div');
+            mDiv.className = 'mini-month';
+            mDiv.innerHTML = `<div class="mini-month-title">${mName}</div>`;
 
-            html += `<div class="year-month"><div class="year-month-title">${months[m]}</div><div class="mini-grid">`;
-            ['D','S','T','Q','Q','S','S'].forEach(d => html += `<div class="mini-header">${d}</div>`);
-            for (let i = 0; i < startDow; i++) html += '<div class="mini-day empty"></div>';
+            const grid = document.createElement('div');
+            grid.className = 'mini-month-grid';
 
-            for (let day = 1; day <= totalDays; day++) {
-                const isToday = today.getFullYear() === year
-                    && today.getMonth() === m
-                    && today.getDate() === day;
-                const dateStr = `${year}-${String(m+1).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
-                const hasTasks = this.getTasksForDate(dateStr).length > 0;
-                html += `<div class="mini-day ${isToday ? 'today' : ''} ${hasTasks ? 'has-tasks' : ''}"
-                              data-date="${dateStr}">${day}</div>`;
-            }
-            html += '</div></div>';
-        }
-        html += '</div>';
-        container.innerHTML = html;
-
-        container.querySelectorAll('.mini-day[data-date]').forEach(el => {
-            el.addEventListener('click', () => {
-                const [y, m, d] = el.dataset.date.split('-').map(Number);
-                this.currentDate = new Date(y, m - 1, d);
-                this.setView('day');
-                document.querySelectorAll('.view-btn').forEach(b => b.classList.remove('active'));
-                document.querySelector('.view-btn[data-view="day"]')?.classList.add('active');
+            weekLetters.forEach(l => {
+                const lbl = document.createElement('div');
+                lbl.className = 'mini-month-day other-month';
+                lbl.textContent = l;
+                grid.appendChild(lbl);
             });
+
+            const firstDay = new Date(year, monthIdx, 1).getDay();
+            const daysInMonth = new Date(year, monthIdx + 1, 0).getDate();
+
+            for (let i = 0; i < firstDay; i++) {
+                const empty = document.createElement('div');
+                empty.className = 'mini-month-day other-month';
+                grid.appendChild(empty);
+            }
+
+            for (let d = 1; d <= daysInMonth; d++) {
+                const dateStr = `${year}-${String(monthIdx + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+                const dayTasks = this.getTasksForDate(dateStr);
+                const hasTask = dayTasks.length > 0;
+
+                const cell = document.createElement('div');
+                cell.className = `mini-month-day ${hasTask ? 'has-task' : ''}`;
+                cell.textContent = d;
+                if (hasTask) {
+                    cell.title = `${dayTasks.length} tarefa(s)`;
+                    const firstColor = StorageManager.getCategoryColor(dayTasks[0].category || 'Geral');
+                    cell.style.backgroundColor = firstColor;
+                    cell.style.color = this.isLightColor(firstColor) ? '#1a202c' : '#ffffff';
+                }
+                grid.appendChild(cell);
+            }
+
+            mDiv.appendChild(grid);
+
+            mDiv.addEventListener('click', () => {
+                this.currentDate = new Date(year, monthIdx, 1);
+                this.currentView = 'month';
+                const monthBtn = document.getElementById('btn-month-view');
+                if (monthBtn) monthBtn.click();
+                else this.render();
+            });
+
+            yearGrid.appendChild(mDiv);
         });
     }
 
-    escape(str) {
-        const div = document.createElement('div');
-        div.textContent = str ?? '';
-        return div.innerHTML;
+    /* ------------------- REPORTS ------------------- */
+
+    renderReports() {
+        const totalTasks = this.tasks.length;
+        const completedTasks = this.tasks.filter(t => t.completed).length;
+        const completionRate = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0;
+
+        const totalEl = document.getElementById('stat-total-tasks');
+        const rateEl = document.getElementById('stat-completed-rate');
+        if (totalEl) totalEl.textContent = totalTasks;
+        if (rateEl) rateEl.textContent = `${completionRate}%`;
+
+        this.renderCategoryChart();
+    }
+
+    renderCategoryChart() {
+        const canvas = document.getElementById('categoryChart');
+        const wrapper = document.getElementById('chart-wrapper');
+        if (!canvas || !wrapper) return;
+
+        if (this.tasks.length === 0) {
+            if (this.chartInstance) {
+                this.chartInstance.destroy();
+                this.chartInstance = null;
+            }
+            wrapper.innerHTML = '<div class="chart-empty">Nenhuma tarefa cadastrada ainda.<br>Adicione tarefas para ver o relatório por categoria.</div>';
+            return;
+        }
+
+        if (!wrapper.querySelector('#categoryChart')) {
+            wrapper.innerHTML = '<canvas id="categoryChart"></canvas>';
+        }
+        const ctx = document.getElementById('categoryChart').getContext('2d');
+
+        const counts = {};
+        this.tasks.forEach(t => {
+            const cat = t.category || 'Geral';
+            counts[cat] = (counts[cat] || 0) + 1;
+        });
+
+        const labels = Object.keys(counts);
+        const data = Object.values(counts);
+        const colors = labels.map(name => StorageManager.getCategoryColor(name));
+
+        if (this.chartInstance) this.chartInstance.destroy();
+
+        if (typeof Chart === 'undefined') {
+            wrapper.innerHTML = '<div class="chart-empty">Não foi possível carregar o gráfico (Chart.js).</div>';
+            return;
+        }
+
+        this.chartInstance = new Chart(ctx, {
+            type: 'doughnut',
+            data: {
+                labels,
+                datasets: [{
+                    data,
+                    backgroundColor: colors,
+                    borderWidth: 2,
+                    borderColor: '#fff'
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { position: 'bottom' },
+                    title: { display: true, text: 'Tarefas por Categoria' }
+                }
+            }
+        });
     }
 }
