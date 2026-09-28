@@ -1246,3 +1246,103 @@ body.dark-mode .day-tool {
     background: currentColor;
     opacity: 0.6;
 }
+
+/* ==========================================================================
+   ADIÇÕES v7 — Aba Marcadores: blocos e lista de sugestões
+   ========================================================================== */
+
+.marker-block {
+    margin-bottom: 22px;
+    padding-bottom: 18px;
+    border-bottom: 1px dashed var(--cinza);
+}
+.marker-block:last-of-type {
+    border-bottom: none;
+    margin-bottom: 0;
+    padding-bottom: 0;
+}
+
+.marker-block-title {
+    color: var(--cor-titulo);
+    font-size: 1rem;
+    font-weight: 700;
+    margin-bottom: 4px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+.marker-block-title i {
+    color: var(--cor-principal);
+}
+
+.marker-block-desc {
+    font-size: 0.85rem;
+    color: var(--cor-texto-light);
+    margin-bottom: 12px;
+    line-height: 1.5;
+}
+
+/* Lista de sugestões — reusa o visual das categorias */
+.suggestions-list {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    max-height: 220px;
+    overflow-y: auto;
+    padding-right: 4px;
+}
+.suggestions-list:empty::after {
+    content: 'Nenhuma sugestão cadastrada.';
+    color: var(--cor-texto-light);
+    font-style: italic;
+    font-size: 0.9rem;
+    padding: 8px 0;
+    display: block;
+}
+
+.suggestion-item .category-name {
+    font-weight: 600;
+}
+
+/* Reorganiza o .marker-year-row para ficar dentro do .markers-actions */
+.markers-actions {
+    align-items: center;
+}
+.markers-actions .marker-year-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 0;
+}
+.markers-actions .marker-year-row label {
+    font-size: 0.85rem;
+    color: var(--cor-texto-light);
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+/* Categoria add-row: aceita input de color adicional */
+#new-suggestion-color {
+    width: 48px;
+    height: 42px;
+    padding: 3px;
+    border: 2px solid var(--cor-input-border);
+    border-radius: 10px;
+    background: var(--cor-input-bg);
+    cursor: pointer;
+    flex-shrink: 0;
+    transition: border-color 0.15s;
+}
+#new-suggestion-color:hover {
+    border-color: var(--cor-principal);
+}
+
+@media (max-width: 640px) {
+    .markers-actions {
+        flex-direction: column;
+        align-items: stretch;
+    }
+    .markers-actions .marker-year-row {
+        justify-content: space-between;
+    }
+}
