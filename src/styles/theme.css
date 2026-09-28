@@ -820,3 +820,104 @@ body.dark-mode .day-task-notes-block .notes-label { color: #e0d080; }
 .time-block {
     border-left: 4px solid rgba(0,0,0,0.15);
 }
+
+/* ==========================================================================
+   ADIÇÕES v5 — Overflow no mensal, marcadores de dia, +N mais
+   ========================================================================== */
+
+/* ---------- Fix de overflow no calendário mensal ---------- */
+.calendar-day {
+    overflow: hidden;            /* impede vazamento dos badges */
+    max-height: 155px;           /* trava altura visual */
+    min-width: 0;                /* permite encolher em colunas grid */
+    position: relative;
+}
+
+.calendar-day .task-item-badge {
+    min-width: 0;
+    max-width: 100%;
+    box-sizing: border-box;
+}
+
+/* Link "+N mais" dentro da célula do mês */
+.task-more {
+    font-size: 0.68rem;
+    color: var(--cor-texto-light);
+    text-align: center;
+    padding: 2px 0;
+    cursor: pointer;
+    font-weight: 700;
+    border-radius: 4px;
+    transition: background 0.15s, color 0.15s;
+    margin-top: auto;
+}
+.task-more:hover {
+    background: var(--cinza-claro);
+    color: var(--cor-titulo);
+}
+body.dark-mode .task-more:hover { background: rgba(255,255,255,0.06); }
+
+/* ---------- Marcador de dia (badge pequeno no mensal/semanal) ---------- */
+.day-marker {
+    font-size: 0.62rem;
+    padding: 2px 6px;
+    border-radius: 4px;
+    margin: 2px 0 3px;
+    text-align: center;
+    font-weight: 700;
+    text-overflow: ellipsis;
+    overflow: hidden;
+    white-space: nowrap;
+    letter-spacing: 0.2px;
+    text-transform: uppercase;
+    box-shadow: inset 0 -1px 0 rgba(0,0,0,0.08);
+}
+
+/* ---------- Seção de marcador na visão diária ---------- */
+.day-marker-section {
+    margin-bottom: 16px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+.day-marker-badge {
+    padding: 8px 16px;
+    border-radius: 24px;
+    font-weight: 700;
+    font-size: 0.9rem;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.12);
+    letter-spacing: 0.2px;
+}
+.day-marker-badge .marker-action {
+    background: rgba(255,255,255,0.28);
+    border: none;
+    border-radius: 50%;
+    width: 22px;
+    height: 22px;
+    cursor: pointer;
+    color: inherit;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.7rem;
+    transition: background 0.15s, transform 0.15s;
+}
+.day-marker-badge .marker-action:hover {
+    background: rgba(255,255,255,0.55);
+    transform: scale(1.08);
+}
+.btn-add-marker {
+    font-size: 0.85rem;
+    padding: 8px 14px;
+    border-style: dashed !important;
+    border-width: 2px !important;
+}
+
+/* Mini-calendário do ano — borda para marcador */
+.mini-month-day.has-marker {
+    font-weight: 700;
+}
