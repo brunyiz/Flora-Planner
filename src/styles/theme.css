@@ -1346,3 +1346,21 @@ body.dark-mode .day-tool {
         justify-content: space-between;
     }
 }
+
+/* ==========================================================================
+   ADIÇÕES v7 — Garantias para exportação PNG via html2canvas
+   ========================================================================== */
+
+/* Marcadores com fundo sólido durante captura */
+.day-marker,
+.day-marker-badge,
+.day-marker-more {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+}
+
+/* Evita que a animação do hover interfira na captura */
+.week-day-column .day-marker,
+.calendar-day .day-marker {
+    transform: none !important;
+}
