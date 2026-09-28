@@ -1,7 +1,7 @@
 /**
  * CalendarView.js
  * Renderização do calendário (Mensal/Semanal/Diário/Anual) e relatórios.
- * NOVO: Suporte a recorrência, hora fim, ordenação manual (SortableJS) e visualização diária.
+ * NOVO v5: completude por ocorrência, marcadores de dia, overflow fixado no mensal.
  */
 
 class CalendarView {
@@ -131,12 +131,7 @@ class CalendarView {
         }[c]));
     }
 
-    /**
-     * Verifica se uma tarefa aparece em determinada data,
-     * considerando recorrência.
-     */
     taskMatchesDate(task, dateStr, dateObj, dow) {
-        // Tarefa normal, data exata
         if (task.date === dateStr && !task.recurrence) return true;
 
         if (task.recurrence && Array.isArray(task.recurrence.days) && task.recurrence.days.length > 0) {
@@ -150,23 +145,52 @@ class CalendarView {
             }
             return task.recurrence.days.includes(dow);
         }
-
-        // Tarefa normal (sem recorrência) em outra data — não aparece
         return false;
     }
 
+    isTaskRecurring(task) {
+        return !!(task && task.recurrence && Array.isArray(task.recurrence.days) && task.recurrence.days.length > 0);
+    }
+
     /**
-     * Retorna tarefas do dia, aplicando:
-     *  - recorrência
-     *  - ordenação manual (order) com fallback para horário
+     * Completude calculada POR OCORRÊNCIA:
+     * - Não recorrente: usa task.completed
+     * - Recorrente: checa task.completedDates
+     */
+    isTaskCompletedOn(task, dateStr) {
+        if (this.isTaskRecurring(task)) {
+            const dates = Array.isArray(task.completedDates) ? task.completedDates : [];
+            return dates.includes(dateStr);
+        }
+        return !!task.completed;
+    }
+
+    /**
+     * Retorna tarefas do dia (cópias enriquecidas com `_instanceDate` e `_instanceCompleted`),
+     * já filtrando ocorrências excluídas e ordenando.
      */
     getTasksForDate(dateStr) {
         const dateObj = new Date(dateStr + 'T00:00:00');
         const dow = dateObj.getDay();
 
-        const filtered = this.tasks.filter(t => this.taskMatchesDate(t, dateStr, dateObj, dow));
+        const matches = this.tasks.filter(t => this.taskMatchesDate(t, dateStr, dateObj, dow));
 
-        filtered.sort((a, b) => {
+        // Filtra ocorrências excluídas
+        const visible = matches.filter(t => {
+            if (this.isTaskRecurring(t) && Array.isArray(t.excludedDates)) {
+                return !t.excludedDates.includes(dateStr);
+            }
+            return true;
+        });
+
+        // Enriquece com info da instância
+        const enriched = visible.map(task => ({
+            ...task,
+            _instanceDate: dateStr,
+            _instanceCompleted: this.isTaskCompletedOn(task, dateStr)
+        }));
+
+        enriched.sort((a, b) => {
             const aHas = typeof a.order === 'number';
             const bHas = typeof b.order === 'number';
             if (aHas && bHas) {
@@ -179,7 +203,7 @@ class CalendarView {
             return (a.time || '99:99').localeCompare(b.time || '99:99');
         });
 
-        return filtered;
+        return enriched;
     }
 
     /* ------------------- MONTH ------------------- */
@@ -187,6 +211,8 @@ class CalendarView {
     renderMonthGrid() {
         const monthGrid = document.getElementById('month-grid');
         if (!monthGrid) return;
+
+        const MAX_MONTH_TASKS = 3;
 
         monthGrid.innerHTML = `
             <div class="weekday-header">Dom</div>
@@ -220,13 +246,30 @@ class CalendarView {
 
             const dayEl = document.createElement('div');
             dayEl.className = `calendar-day ${isToday ? 'today' : ''}`;
-            dayEl.innerHTML = `<span class="day-number">${d}</span>`;
+
+            // Day number
+            const numEl = document.createElement('span');
+            numEl.className = 'day-number';
+            numEl.textContent = d;
+            dayEl.appendChild(numEl);
+
+            // Marcador de dia (feriado etc.)
+            const marker = StorageManager.getDayMarker(dateStr);
+            if (marker) {
+                const m = document.createElement('div');
+                m.className = 'day-marker';
+                m.style.backgroundColor = marker.color;
+                m.style.color = this.isLightColor(marker.color) ? '#1a202c' : '#ffffff';
+                m.textContent = marker.label;
+                m.title = marker.label;
+                dayEl.appendChild(m);
+            }
 
             const dayTasks = this.getTasksForDate(dateStr);
 
-            dayTasks.forEach(task => {
+            dayTasks.slice(0, MAX_MONTH_TASKS).forEach(task => {
                 const badge = document.createElement('div');
-                badge.className = `task-item-badge ${task.completed ? 'done' : ''}`;
+                badge.className = `task-item-badge ${task._instanceCompleted ? 'done' : ''}`;
                 const timePrefix = task.time
                     ? (task.endTime ? `${task.time}-${task.endTime} ` : `${task.time} `)
                     : '';
@@ -235,10 +278,24 @@ class CalendarView {
                 this.applyCategoryColor(badge, task.category);
                 badge.addEventListener('click', (e) => {
                     e.stopPropagation();
-                    if (this.onTaskClick) this.onTaskClick(task);
+                    if (this.onTaskClick) this.onTaskClick(task, task._instanceDate);
                 });
                 dayEl.appendChild(badge);
             });
+
+            const remaining = dayTasks.length - MAX_MONTH_TASKS;
+            if (remaining > 0) {
+                const more = document.createElement('div');
+                more.className = 'task-more';
+                more.textContent = `+${remaining} mais`;
+                more.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    const [yy, mm, dd] = dateStr.split('-').map(Number);
+                    this.currentDate = new Date(yy, mm - 1, dd);
+                    this.setView('day');
+                });
+                dayEl.appendChild(more);
+            }
 
             dayEl.addEventListener('click', () => {
                 if (this.onDayClick) this.onDayClick(dateStr);
@@ -248,8 +305,8 @@ class CalendarView {
         }
 
         const totalCells = firstDay + daysInMonth;
-        const remaining = (7 - (totalCells % 7)) % 7;
-        for (let d = 1; d <= remaining; d++) {
+        const remainingCells = (7 - (totalCells % 7)) % 7;
+        for (let d = 1; d <= remainingCells; d++) {
             const dayEl = document.createElement('div');
             dayEl.className = 'calendar-day other-month';
             dayEl.innerHTML = `<span class="day-number">${d}</span>`;
@@ -287,6 +344,18 @@ class CalendarView {
             `;
             col.appendChild(header);
 
+            // Marcador de dia
+            const marker = StorageManager.getDayMarker(dateStr);
+            if (marker) {
+                const m = document.createElement('div');
+                m.className = 'day-marker';
+                m.style.backgroundColor = marker.color;
+                m.style.color = this.isLightColor(marker.color) ? '#1a202c' : '#ffffff';
+                m.textContent = marker.label;
+                m.title = marker.label;
+                col.appendChild(m);
+            }
+
             const tasksContainer = document.createElement('div');
             tasksContainer.className = 'week-day-tasks';
             tasksContainer.dataset.date = dateStr;
@@ -294,9 +363,9 @@ class CalendarView {
             const dayTasks = this.getTasksForDate(dateStr);
             dayTasks.forEach(task => {
                 const tBlock = document.createElement('div');
-                tBlock.className = `week-task ${task.completed ? 'done' : ''}`;
+                tBlock.className = `week-task ${task._instanceCompleted ? 'done' : ''}`;
                 tBlock.dataset.taskId = task.id;
-                tBlock.dataset.recurring = task.recurrence ? 'true' : 'false';
+                tBlock.dataset.recurring = this.isTaskRecurring(task) ? 'true' : 'false';
 
                 const timeStr = task.time
                     ? (task.endTime ? `${task.time} - ${task.endTime}` : task.time)
@@ -305,17 +374,16 @@ class CalendarView {
                 tBlock.innerHTML = `
                     <div class="week-task-time">
                         <i class="fas fa-clock"></i> ${timeStr}
-                        ${task.recurrence ? '<i class="fas fa-redo week-task-recur-icon" title="Tarefa recorrente"></i>' : ''}
+                        ${this.isTaskRecurring(task) ? '<i class="fas fa-redo week-task-recur-icon" title="Tarefa recorrente"></i>' : ''}
                     </div>
                     <div class="week-task-title">${this.escapeHtml(task.title)}</div>
                 `;
                 this.applyCategoryColor(tBlock, task.category);
 
                 tBlock.addEventListener('click', (e) => {
-                    // Ignora cliques após um drag (sortable já cuida disso)
                     if (tBlock.classList.contains('sortable-chosen') || tBlock.classList.contains('sortable-ghost')) return;
                     e.stopPropagation();
-                    if (this.onTaskClick) this.onTaskClick(task);
+                    if (this.onTaskClick) this.onTaskClick(task, task._instanceDate);
                 });
 
                 tasksContainer.appendChild(tBlock);
@@ -330,7 +398,6 @@ class CalendarView {
             weeklyGrid.appendChild(col);
         }
 
-        // Inicializa SortableJS em cada coluna
         if (window.Sortable) {
             weeklyGrid.querySelectorAll('.week-day-tasks').forEach(el => {
                 new Sortable(el, {
@@ -357,8 +424,7 @@ class CalendarView {
 
             task.order = idx;
 
-            // Se mudou de coluna e NÃO é recorrente, atualiza a data
-            if (!task.recurrence && task.date !== targetDate) {
+            if (!this.isTaskRecurring(task) && task.date !== targetDate) {
                 task.date = targetDate;
             }
         });
@@ -380,6 +446,34 @@ class CalendarView {
         const weekdayCap = weekday.charAt(0).toUpperCase() + weekday.slice(1);
         const fullDate = d.toLocaleDateString('pt-BR', { day: 'numeric', month: 'long', year: 'numeric' });
 
+        // Marcador de dia
+        const marker = StorageManager.getDayMarker(dateStr);
+        let markerHtml = '';
+        if (marker) {
+            const mTextColor = this.isLightColor(marker.color) ? '#1a202c' : '#ffffff';
+            markerHtml = `
+                <div class="day-marker-section">
+                    <div class="day-marker-badge" style="background:${marker.color}; color:${mTextColor};">
+                        <i class="fas fa-tag"></i> ${this.escapeHtml(marker.label)}
+                        <button class="marker-action edit-marker" data-date="${dateStr}" title="Editar marcador">
+                            <i class="fas fa-pen"></i>
+                        </button>
+                        <button class="marker-action remove-marker" data-date="${dateStr}" title="Remover marcador">
+                            <i class="fas fa-times"></i>
+                        </button>
+                    </div>
+                </div>
+            `;
+        } else {
+            markerHtml = `
+                <div class="day-marker-section">
+                    <button class="btn btn-secondary btn-add-marker" data-date="${dateStr}">
+                        <i class="fas fa-tag"></i> Marcar este dia (feriado, prova…)
+                    </button>
+                </div>
+            `;
+        }
+
         let html = `
             <div class="day-view-header">
                 <h2><i class="fas fa-calendar-day"></i> ${weekdayCap}, ${fullDate}</h2>
@@ -387,6 +481,7 @@ class CalendarView {
                     ${dayTasks.length} tarefa${dayTasks.length === 1 ? '' : 's'} programada${dayTasks.length === 1 ? '' : 's'}
                 </div>
             </div>
+            ${markerHtml}
         `;
 
         if (dayTasks.length === 0) {
@@ -405,6 +500,7 @@ class CalendarView {
                 const timeRange = task.time
                     ? `${task.time}${task.endTime ? ' – ' + task.endTime : ''}`
                     : 'Sem horário';
+                const isRecurring = this.isTaskRecurring(task);
 
                 const notesHtml = task.notes
                     ? `<div class="day-task-notes-block">
@@ -414,7 +510,7 @@ class CalendarView {
                     : '';
 
                 html += `
-                    <div class="day-task-item ${task.completed ? 'done' : ''}"
+                    <div class="day-task-item ${task._instanceCompleted ? 'done' : ''}"
                          data-task-id="${task.id}"
                          style="border-left-color: ${color};">
                         <div class="day-task-time-col">
@@ -427,8 +523,8 @@ class CalendarView {
                         <div class="day-task-content-col">
                             <div class="day-task-title-row">
                                 <span class="day-task-title">${this.escapeHtml(task.title)}</span>
-                                ${task.recurrence ? '<span class="recurrence-badge" title="Tarefa recorrente"><i class="fas fa-redo"></i> Recorrente</span>' : ''}
-                                ${task.completed ? '<span class="completed-badge"><i class="fas fa-check"></i> Concluída</span>' : ''}
+                                ${isRecurring ? '<span class="recurrence-badge" title="Tarefa recorrente"><i class="fas fa-redo"></i> Recorrente</span>' : ''}
+                                ${task._instanceCompleted ? '<span class="completed-badge"><i class="fas fa-check"></i> Concluída</span>' : ''}
                             </div>
                             ${notesHtml}
                         </div>
@@ -440,10 +536,53 @@ class CalendarView {
 
         container.innerHTML = html;
 
+        // Clique em tarefa
         container.querySelectorAll('.day-task-item').forEach(el => {
             el.addEventListener('click', () => {
                 const task = this.tasks.find(t => t.id === el.dataset.taskId);
-                if (task && this.onTaskClick) this.onTaskClick(task);
+                if (task && this.onTaskClick) this.onTaskClick(task, dateStr);
+            });
+        });
+
+        // Adicionar / editar marcador
+        container.querySelectorAll('.btn-add-marker, .edit-marker').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const ds = btn.dataset.date;
+                const existing = StorageManager.getDayMarker(ds);
+
+                const label = prompt(
+                    'Nome do marcador (ex: Feriado, Prova, Aniversário).\n' +
+                    'Deixe em branco e confirme para REMOVER o marcador:',
+                    existing ? existing.label : ''
+                );
+                if (label === null) return;
+
+                if (!label.trim()) {
+                    StorageManager.removeDayMarker(ds);
+                    this.render();
+                    return;
+                }
+
+                const color = prompt(
+                    'Cor do marcador (hexadecimal, ex: #F6AD55 para laranja, #FC8181 para vermelho):',
+                    existing ? existing.color : '#F6AD55'
+                ) || '#F6AD55';
+
+                StorageManager.setDayMarker(ds, label, color);
+                this.render();
+            });
+        });
+
+        // Remover marcador
+        container.querySelectorAll('.remove-marker').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const ds = btn.dataset.date;
+                if (confirm('Remover marcador deste dia?')) {
+                    StorageManager.removeDayMarker(ds);
+                    this.render();
+                }
             });
         });
     }
@@ -487,12 +626,17 @@ class CalendarView {
                 const dateStr = `${year}-${String(monthIdx + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
                 const dayTasks = this.getTasksForDate(dateStr);
                 const hasTask = dayTasks.length > 0;
+                const marker = StorageManager.getDayMarker(dateStr);
 
                 const cell = document.createElement('div');
-                cell.className = `mini-month-day ${hasTask ? 'has-task' : ''}`;
+                cell.className = `mini-month-day ${hasTask ? 'has-task' : ''} ${marker ? 'has-marker' : ''}`;
                 cell.textContent = d;
+                if (marker) {
+                    cell.style.border = `2px solid ${marker.color}`;
+                    cell.title = marker.label;
+                }
                 if (hasTask) {
-                    cell.title = `${dayTasks.length} tarefa(s)`;
+                    cell.title = cell.title ? cell.title + ' • ' + dayTasks.length + ' tarefa(s)' : `${dayTasks.length} tarefa(s)`;
                     const firstColor = StorageManager.getCategoryColor(dayTasks[0].category || 'Geral');
                     cell.style.backgroundColor = firstColor;
                     cell.style.color = this.isLightColor(firstColor) ? '#1a202c' : '#ffffff';
