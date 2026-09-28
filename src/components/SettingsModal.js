@@ -1,6 +1,6 @@
 /**
  * SettingsModal.js
- * Configurações em abas (Interface, Planejamento, Categorias, Marcadores, PDF, Geral).
+ * Configurações em abas, com gestão de categorias E sugestões de marcador.
  */
 
 class SettingsModal {
@@ -88,24 +88,50 @@ class SettingsModal {
                     </div>
 
                     <div class="settings-tab-content" id="tab-markers">
-                        <p style="font-size: 0.9rem; color: var(--cor-texto-light); margin-bottom: 14px;">
-                            Marcadores destacam datas especiais (feriados, provas, aniversários).
-                            Podem ser únicos ou recorrentes (ex: toda sexta-feira).
-                        </p>
-                        <div class="markers-actions">
-                            <button type="button" class="btn btn-primary" id="btn-add-marker-settings">
-                                <i class="fas fa-plus"></i> Novo marcador
-                            </button>
-                            <button type="button" class="btn btn-secondary" id="btn-import-holidays">
-                                <i class="fas fa-calendar-check"></i> Importar feriados brasileiros
-                            </button>
+                        <!-- Bloco 1: sugestões (chips) -->
+                        <div class="marker-block">
+                            <h4 class="marker-block-title">
+                                <i class="fas fa-magic"></i> Sugestões rápidas
+                            </h4>
+                            <p class="marker-block-desc">
+                                Essas "etiquetas" aparecem como atalhos no modal de marcador.
+                                Você pode mudar a cor, adicionar novas ou remover as que não usa.
+                            </p>
+                            <div class="suggestions-list" id="suggestion-list"></div>
+                            <div class="category-add-row" style="margin-top: 10px;">
+                                <input type="text" class="form-control" id="new-suggestion-input"
+                                       placeholder="Nome da sugestão (ex: Viagem...)" maxlength="30">
+                                <input type="color" id="new-suggestion-color"
+                                       value="#F6AD55" style="max-width: 50px;">
+                                <button type="button" class="btn btn-primary" id="btn-add-suggestion">
+                                    <i class="fas fa-plus"></i> Adicionar
+                                </button>
+                            </div>
                         </div>
-                        <div class="marker-year-row">
-                            <label>Ano para importar:</label>
-                            <select class="form-control" id="holiday-year" style="max-width: 120px;">
-                            </select>
+
+                        <!-- Bloco 2: marcadores aplicados -->
+                        <div class="marker-block">
+                            <h4 class="marker-block-title">
+                                <i class="fas fa-calendar-check"></i> Marcadores no calendário
+                            </h4>
+                            <p class="marker-block-desc">
+                                Marcadores são datas especiais aplicadas a dias específicos.
+                                Crie pelo botão abaixo, pelo ícone 🏷️ no calendário ou com o botão direito em qualquer dia.
+                            </p>
+                            <div class="markers-actions">
+                                <button type="button" class="btn btn-primary" id="btn-add-marker-settings">
+                                    <i class="fas fa-plus"></i> Novo marcador
+                                </button>
+                                <button type="button" class="btn btn-secondary" id="btn-import-holidays">
+                                    <i class="fas fa-calendar-check"></i> Importar feriados brasileiros
+                                </button>
+                                <div class="marker-year-row">
+                                    <label>Ano:</label>
+                                    <select class="form-control" id="holiday-year" style="max-width: 100px;"></select>
+                                </div>
+                            </div>
+                            <div class="markers-list" id="markers-list"></div>
                         </div>
-                        <div class="markers-list" id="markers-list"></div>
                     </div>
 
                     <div class="settings-tab-content" id="tab-pdf">
@@ -142,7 +168,6 @@ class SettingsModal {
         `;
         document.body.appendChild(this.modal);
 
-        // Ano para importação
         const yearSelect = this.modal.querySelector('#holiday-year');
         const currentYear = new Date().getFullYear();
         for (let y = currentYear; y <= currentYear + 3; y++) {
@@ -175,15 +200,24 @@ class SettingsModal {
             this.saveSettings();
         });
 
+        // Categorias
         this.modal.querySelector('#btn-add-category').addEventListener('click', () => this.handleAddCategory());
         this.modal.querySelector('#new-category-input').addEventListener('keydown', (e) => {
             if (e.key === 'Enter') { e.preventDefault(); this.handleAddCategory(); }
         });
 
+        // Sugestões de marcador
+        this.modal.querySelector('#btn-add-suggestion').addEventListener('click', () => this.handleAddSuggestion());
+        this.modal.querySelector('#new-suggestion-input').addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') { e.preventDefault(); this.handleAddSuggestion(); }
+        });
+
+        // Novo marcador
         this.modal.querySelector('#btn-add-marker-settings').addEventListener('click', () => {
             if (this.onOpenMarker) this.onOpenMarker(null, null);
         });
 
+        // Importar feriados
         this.modal.querySelector('#btn-import-holidays').addEventListener('click', () => {
             const year = parseInt(this.modal.querySelector('#holiday-year').value, 10);
             const result = StorageManager.importBrazilianHolidays(year);
@@ -192,6 +226,8 @@ class SettingsModal {
             if (this.onSettingsChanged) this.onSettingsChanged(StorageManager.getSettings());
         });
     }
+
+    /* ======================= CATEGORIAS ======================= */
 
     handleAddCategory() {
         const input = this.modal.querySelector('#new-category-input');
@@ -250,6 +286,76 @@ class SettingsModal {
         });
     }
 
+    /* =================== SUGESTÕES DE MARCADOR =================== */
+
+    handleAddSuggestion() {
+        const input = this.modal.querySelector('#new-suggestion-input');
+        const colorInput = this.modal.querySelector('#new-suggestion-color');
+        const value = (input.value || '').trim();
+        if (!value) { alert('Digite um nome para a sugestão.'); return; }
+        if (!StorageManager.addMarkerSuggestion(value, colorInput.value)) {
+            alert('Essa sugestão já existe.');
+            return;
+        }
+        input.value = '';
+        this.renderSuggestionsList();
+    }
+
+    renderSuggestionsList() {
+        const list = this.modal.querySelector('#suggestion-list');
+        if (!list) return;
+        const escapeHtml = (s) => String(s).replace(/[&<>"']/g, (c) => ({
+            '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+        }[c]));
+
+        const suggestions = StorageManager.getMarkerSuggestions();
+
+        if (suggestions.length === 0) {
+            list.innerHTML = `
+                <div class="markers-empty" style="padding: 10px 0;">
+                    Nenhuma sugestão cadastrada. Adicione abaixo.
+                </div>
+            `;
+            return;
+        }
+
+        list.innerHTML = suggestions.map(s => `
+            <div class="category-item suggestion-item">
+                <div class="category-item-left">
+                    <input type="color"
+                           class="category-color-input suggestion-color-input"
+                           data-suggestion="${escapeHtml(s.label)}"
+                           value="${escapeHtml(s.color)}"
+                           title="Cor da sugestão">
+                    <span class="category-name">${escapeHtml(s.label)}</span>
+                </div>
+                <button type="button" class="category-remove suggestion-remove"
+                        data-suggestion="${escapeHtml(s.label)}"
+                        title="Remover sugestão">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+        `).join('');
+
+        list.querySelectorAll('.suggestion-remove').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const label = btn.getAttribute('data-suggestion');
+                if (confirm(`Remover a sugestão "${label}"?\n\nMarcadores já criados com esse nome continuam existindo — só o atalho some.`)) {
+                    StorageManager.removeMarkerSuggestion(label);
+                    this.renderSuggestionsList();
+                }
+            });
+        });
+
+        list.querySelectorAll('.suggestion-color-input').forEach(input => {
+            input.addEventListener('input', () => {
+                StorageManager.updateMarkerSuggestionColor(input.getAttribute('data-suggestion'), input.value);
+            });
+        });
+    }
+
+    /* ==================== MARCADORES APLICADOS ==================== */
+
     renderMarkersList() {
         const list = this.modal.querySelector('#markers-list');
         if (!list) return;
@@ -262,7 +368,7 @@ class SettingsModal {
         if (markers.length === 0) {
             list.innerHTML = `
                 <div class="markers-empty">
-                    Nenhum marcador cadastrado ainda. Use o botão acima ou clique no ícone 🏷️ em qualquer dia do calendário.
+                    Nenhum marcador aplicado ainda.
                 </div>
             `;
             return;
@@ -285,7 +391,6 @@ class SettingsModal {
             } else {
                 when = mk.date || '—';
             }
-            const textColor = StorageManager.DEFAULT_CATEGORY_COLOR; // não usado
             return `
                 <div class="marker-item">
                     <div class="marker-item-left">
@@ -324,6 +429,8 @@ class SettingsModal {
         });
     }
 
+    /* ======================= ABRIR / SALVAR ======================= */
+
     open() {
         const settings = StorageManager.getSettings();
         this.modal.querySelector('#setting-dark-mode').checked = settings.darkMode;
@@ -332,8 +439,11 @@ class SettingsModal {
         this.modal.querySelector('#setting-start-week').value = settings.startOfWeek;
         this.modal.querySelector('#setting-pdf-orientation').value = settings.pdfOrientation;
         this.modal.querySelector('#setting-pdf-font-size').value = settings.pdfFontSize;
+
         this.renderCategoryList();
+        this.renderSuggestionsList();
         this.renderMarkersList();
+
         this.modal.style.display = 'flex';
     }
 
@@ -349,6 +459,7 @@ class SettingsModal {
             startOfWeek: parseInt(this.modal.querySelector('#setting-start-week').value, 10),
             pdfOrientation: this.modal.querySelector('#setting-pdf-orientation').value,
             pdfFontSize: this.modal.querySelector('#setting-pdf-font-size').value
+            // categories e markerSuggestions são preservados automaticamente via spread
         };
         StorageManager.saveSettings(newSettings);
 
