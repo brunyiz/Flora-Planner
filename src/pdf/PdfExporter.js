@@ -108,7 +108,9 @@ class PdfExporter {
             const timeStr = task.time
                 ? (task.endTime ? `${task.time}-${task.endTime}` : task.time) + ' • '
                 : '';
-            return `<div class="pdf-task ${task.completed ? 'completed' : ''}">&bull; ${this.escapeHtml(timeStr)}${this.escapeHtml(task.title)}</div>`;
+            const catColor = StorageManager.getCategoryColor(task.category || 'Geral');
+            return `<div class="pdf-task ${task.completed ? 'completed' : ''}"
+                         style="border-left-color:${this.escapeHtml(catColor)};">&bull; ${this.escapeHtml(timeStr)}${this.escapeHtml(task.title)}</div>`;
         };
 
         const buildMarkersHtml = (markers, limit = 2) => {
@@ -176,7 +178,7 @@ class PdfExporter {
             }
             .pdf-marker-more { background: #E2E8F0 !important; color: #4A5568 !important; }
             .pdf-task-list { display: flex; flex-direction: column; gap: 3px; font-size: ${taskFontSize}; }
-            .pdf-task { background: #EDF2F7; padding: 2px 4px; border-radius: 4px; border-left: 3px solid ${settings.primaryColor || '#D8B4FE'}; overflow-wrap: break-word; }
+            .pdf-task { background: #EDF2F7; padding: 2px 4px; border-radius: 4px; border-left: 3px solid #CBD5E0; overflow-wrap: break-word; }
             .pdf-task.completed { text-decoration: line-through; opacity: 0.6; }
             .pdf-footer { margin-top: 12px; text-align: center; font-size: 8pt; color: #A0AEC0; }
         `;
@@ -246,8 +248,10 @@ class PdfExporter {
                 const completedOn = t.recurrence
                     ? (Array.isArray(t.completedDates) && t.completedDates.includes(dateStr))
                     : t.completed;
+                const catColor = StorageManager.getCategoryColor(t.category || 'Geral');
                 return `
-                    <div class="pdf-week-task ${completedOn ? 'completed' : ''}">
+                    <div class="pdf-week-task ${completedOn ? 'completed' : ''}"
+                         style="border-left-color:${this.escapeHtml(catColor)};">
                         ${timeStr ? `<div class="pdf-week-task-time">${this.escapeHtml(timeStr)}</div>` : ''}
                         <div class="pdf-week-task-title">${this.escapeHtml(t.title)}</div>
                         ${t.notes ? `<div class="pdf-week-task-notes">${this.escapeHtml(t.notes).replace(/\n/g, '<br>')}</div>` : ''}
@@ -292,7 +296,7 @@ class PdfExporter {
                 white-space: nowrap;
             }
             .pdf-week-body { padding: 6px; display: flex; flex-direction: column; gap: 4px; min-height: 130px; font-size: ${taskFontSize}; flex: 1; }
-            .pdf-week-task { border-left: 3px solid ${settings.primaryColor || '#D8B4FE'}; background: #EDF2F7; padding: 4px 6px; border-radius: 4px; overflow-wrap: break-word; }
+            .pdf-week-task { border-left: 3px solid #CBD5E0; background: #EDF2F7; padding: 4px 6px; border-radius: 4px; overflow-wrap: break-word; }
             .pdf-week-task-time { font-weight: bold; font-size: 8pt; color: #4A5568; }
             .pdf-week-task-title { margin-top: 2px; }
             .pdf-week-task-notes { margin-top: 3px; font-size: 7pt; color: #4A5568; font-style: italic; padding-top: 3px; border-top: 1px dashed #CBD5E0; }
