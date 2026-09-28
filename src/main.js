@@ -100,7 +100,7 @@ class FloraPlannerApp {
         this.calendarView = new CalendarView({
             containerId: 'month-grid',
             onDayClick: (dateStr) => this.taskManager.openForNew(dateStr),
-            onTaskClick: (task) => this.taskManager.openForEdit(task),
+            onTaskClick: (task, instanceDate) => this.taskManager.openForEdit(task, instanceDate),
             // NOVO: quando o usuário reordena na visão semanal
             onTasksUpdated: (tasks) => {
                 this.taskManager.saveExternal(tasks);
