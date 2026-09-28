@@ -1,7 +1,7 @@
 /**
  * StorageManager.js
  * Persistência + utilitários.
- * v6: marcadores com suporte a recorrência, IDs estáveis e feriados brasileiros.
+ * v7: sugestões de marcador agora são configuráveis (add/remove/recolor).
  */
 
 class StorageManager {
@@ -18,7 +18,8 @@ class StorageManager {
     ];
     static DEFAULT_CATEGORY_COLOR = '#9F7AEA';
 
-    static MARKER_SUGGESTIONS = [
+    /** Sugestões iniciais — o usuário pode editar/remover/adicionar */
+    static DEFAULT_MARKER_SUGGESTIONS = [
         { label: 'Feriado',     color: '#F56565' },
         { label: 'Prova',       color: '#ED8936' },
         { label: 'Aniversário', color: '#ED64A6' },
@@ -86,7 +87,8 @@ class StorageManager {
             pdfOrientation: 'landscape',
             pdfShowNotes: true,
             pdfFontSize: 'medium',
-            categories: this.DEFAULT_CATEGORIES.map(c => ({ ...c }))
+            categories: this.DEFAULT_CATEGORIES.map(c => ({ ...c })),
+            markerSuggestions: this.DEFAULT_MARKER_SUGGESTIONS.map(s => ({ ...s }))
         };
         try {
             const data = localStorage.getItem(this.SETTINGS_KEY);
@@ -94,6 +96,7 @@ class StorageManager {
             const parsed = JSON.parse(data);
             const merged = { ...defaults, ...parsed };
             merged.categories = this.normalizeCategories(merged.categories);
+            merged.markerSuggestions = this.normalizeSuggestions(merged.markerSuggestions);
             return merged;
         } catch (e) { return defaults; }
     }
@@ -167,6 +170,57 @@ class StorageManager {
         return true;
     }
 
+    /* ================ SUGESTÕES DE MARCADOR =================== */
+
+    static normalizeSuggestions(list) {
+        if (!Array.isArray(list)) {
+            return this.DEFAULT_MARKER_SUGGESTIONS.map(s => ({ ...s }));
+        }
+        // Lista vazia é permitida (usuário pode querer nenhuma sugestão)
+        return list
+            .filter(s => s && typeof s === 'object' && s.label)
+            .map(s => ({
+                label: String(s.label).trim(),
+                color: s.color || '#F6AD55'
+            }))
+            .filter(s => s.label);
+    }
+
+    static getMarkerSuggestions() {
+        return this.getSettings().markerSuggestions.map(s => ({ ...s }));
+    }
+
+    static saveMarkerSuggestions(suggestions) {
+        const settings = this.getSettings();
+        settings.markerSuggestions = this.normalizeSuggestions(suggestions);
+        this.saveSettings(settings);
+    }
+
+    static addMarkerSuggestion(label, color) {
+        const trimmed = String(label || '').trim();
+        if (!trimmed) return false;
+        const list = this.getMarkerSuggestions();
+        if (list.some(s => s.label.toLowerCase() === trimmed.toLowerCase())) return false;
+        list.push({ label: trimmed, color: color || '#F6AD55' });
+        this.saveMarkerSuggestions(list);
+        return true;
+    }
+
+    static removeMarkerSuggestion(label) {
+        const list = this.getMarkerSuggestions()
+            .filter(s => s.label !== label);
+        this.saveMarkerSuggestions(list);
+    }
+
+    static updateMarkerSuggestionColor(label, color) {
+        const list = this.getMarkerSuggestions();
+        const idx = list.findIndex(s => s.label === label);
+        if (idx < 0) return false;
+        list[idx].color = color;
+        this.saveMarkerSuggestions(list);
+        return true;
+    }
+
     /* ==================== MARCADORES DE DIA ==================== */
 
     static getDayMarkers() {
@@ -207,7 +261,6 @@ class StorageManager {
         catch (e) { console.error(e); }
     }
 
-    /** Retorna TODOS os marcadores aplicáveis a uma data (data exata + recorrentes). */
     static getDayMarkersForDate(dateStr) {
         const markers = this.getDayMarkers();
         const dateObj = new Date(dateStr + 'T00:00:00');
@@ -233,7 +286,6 @@ class StorageManager {
         return result;
     }
 
-    /** Compat: retorna o primeiro marcador (ou null) */
     static getDayMarker(dateStr) {
         const arr = this.getDayMarkersForDate(dateStr);
         return arr.length > 0 ? arr[0] : null;
@@ -261,7 +313,6 @@ class StorageManager {
         this.saveDayMarkers(this.getDayMarkers().filter(m => m.id !== id));
     }
 
-    /** Compat com código antigo */
     static setDayMarker(dateStr, label, color) {
         const markers = this.getDayMarkers();
         const idx = markers.findIndex(m => m.date === dateStr && !m.recurrence);
@@ -288,25 +339,8 @@ class StorageManager {
         );
     }
 
-    /* ==================== SUGESTÕES / FERIADOS ==================== */
+    /* ==================== FERIADOS BRASILEIROS ==================== */
 
-    static getMarkerSuggestions() {
-        // Mescla sugestões padrão com marcadores já usados (nomes únicos)
-        const used = new Map();
-        this.getDayMarkers().forEach(m => {
-            const key = m.label.toLowerCase();
-            if (!used.has(key)) used.set(key, { label: m.label, color: m.color });
-        });
-        const merged = [...this.MARKER_SUGGESTIONS];
-        used.forEach(s => {
-            if (!merged.some(x => x.label.toLowerCase() === s.label.toLowerCase())) {
-                merged.push(s);
-            }
-        });
-        return merged;
-    }
-
-    /** Calcula a Páscoa (algoritmo de Meeus/Jones/Butcher) */
     static calculateEaster(year) {
         const a = year % 19;
         const b = Math.floor(year / 100);
@@ -354,7 +388,6 @@ class StorageManager {
         return list;
     }
 
-    /** Importa os feriados do ano. Retorna { added, updated, total }. */
     static importBrazilianHolidays(year) {
         const holidays = this.getBrazilianHolidays(year);
         const markers = this.getDayMarkers();
@@ -385,7 +418,7 @@ class StorageManager {
     static buildBackupPayload() {
         return {
             app: 'flora-planner',
-            version: 6,
+            version: 7,
             exportedAt: new Date().toISOString(),
             tasks: this.getTasks(),
             settings: this.getSettings(),
@@ -404,6 +437,7 @@ class StorageManager {
 
         const merged = { ...this.getSettings(), ...(parsed.settings || {}) };
         merged.categories = this.normalizeCategories(merged.categories);
+        merged.markerSuggestions = this.normalizeSuggestions(merged.markerSuggestions);
 
         const normalizedTasks = this.normalizeTasks(parsed.tasks);
         const normalizedMarkers = Array.isArray(parsed.dayMarkers)
@@ -441,7 +475,7 @@ class StorageManager {
                 if (err && err.name === 'AbortError') {
                     return { saved: false, via: 'picker', canceled: true };
                 }
-                console.warn('File System Access API indisponível, usando download padrão:', err);
+                console.warn('File System Access API indisponível:', err);
             }
         }
 
