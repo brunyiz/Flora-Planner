@@ -1,79 +1,64 @@
 /**
  * CalendarView.js
- * Renderização do calendário (Mensal/Semanal/Diário/Anual) e relatórios.
- * NOVO v5: completude por ocorrência, marcadores de dia, overflow fixado no mensal.
+ * Renderização (Mensal/Semanal/Diário/Anual) e relatórios.
+ * v6: múltiplos marcadores por dia, hover tools, atalhos para o Diário.
  */
 
 class CalendarView {
-    constructor({ containerId, onDayClick, onTaskClick, onTasksUpdated }) {
+    constructor({ containerId, onDayClick, onTaskClick, onTasksUpdated, onGoToDay, onEditMarker }) {
         this.containerId = containerId;
         this.onDayClick = onDayClick;
         this.onTaskClick = onTaskClick;
         this.onTasksUpdated = onTasksUpdated;
+        this.onGoToDay = onGoToDay;
+        this.onEditMarker = onEditMarker;
         this.currentDate = new Date();
         this.currentView = 'month';
         this.tasks = [];
         this.chartInstance = null;
-
         this.initDOM();
     }
 
-    initDOM() {
-        this.container = document.getElementById(this.containerId);
-    }
+    initDOM() { this.container = document.getElementById(this.containerId); }
 
-    setTasks(tasks) {
-        this.tasks = tasks;
-        this.render();
-    }
-
-    setView(view) {
-        this.currentView = view;
-        this.syncToggleButtons();
-        this.render();
-    }
+    setTasks(tasks) { this.tasks = tasks; this.render(); }
+    setView(view) { this.currentView = view; this.syncToggleButtons(); this.render(); }
 
     syncToggleButtons() {
         const map = {
-            year: 'btn-year-view',
-            month: 'btn-month-view',
-            week: 'btn-week-view',
-            day: 'btn-day-view',
-            reports: 'btn-reports-view'
+            year: 'btn-year-view', month: 'btn-month-view',
+            week: 'btn-week-view', day: 'btn-day-view', reports: 'btn-reports-view'
         };
         Object.entries(map).forEach(([view, id]) => {
             const btn = document.getElementById(id);
             if (btn) btn.classList.toggle('active', view === this.currentView);
         });
-
         const navControls = document.getElementById('nav-controls');
         if (navControls) navControls.style.visibility = this.currentView === 'reports' ? 'hidden' : 'visible';
     }
 
     navigate(direction) {
-        if (this.currentView === 'month') {
-            this.currentDate.setMonth(this.currentDate.getMonth() + direction);
-        } else if (this.currentView === 'week') {
-            this.currentDate.setDate(this.currentDate.getDate() + (direction * 7));
-        } else if (this.currentView === 'year') {
-            this.currentDate.setFullYear(this.currentDate.getFullYear() + direction);
-        } else if (this.currentView === 'day') {
-            this.currentDate.setDate(this.currentDate.getDate() + direction);
-        }
+        if (this.currentView === 'month') this.currentDate.setMonth(this.currentDate.getMonth() + direction);
+        else if (this.currentView === 'week') this.currentDate.setDate(this.currentDate.getDate() + direction * 7);
+        else if (this.currentView === 'year') this.currentDate.setFullYear(this.currentDate.getFullYear() + direction);
+        else if (this.currentView === 'day') this.currentDate.setDate(this.currentDate.getDate() + direction);
         this.render();
     }
 
-    goToToday() {
-        this.currentDate = new Date();
-        this.render();
+    goToToday() { this.currentDate = new Date(); this.render(); }
+
+    /** Navega para uma data específica e muda para view Diário. */
+    goToDay(dateStr) {
+        const [y, m, d] = dateStr.split('-').map(Number);
+        this.currentDate = new Date(y, m - 1, d);
+        this.setView('day');
     }
 
     render() {
         const displayElem = document.getElementById('current-date-display');
         if (displayElem) displayElem.textContent = this.getFormattedDateHeader();
 
-        const views = ['view-month', 'view-week', 'view-day', 'view-year', 'view-reports'];
-        views.forEach(v => {
+        ['view-month','view-week','view-day','view-year','view-reports'].forEach(v => {
             const el = document.getElementById(v);
             if (el) el.style.display = 'none';
         });
@@ -116,8 +101,6 @@ class CalendarView {
         return (0.299 * r + 0.587 * g + 0.114 * b) > 170;
     }
 
-    /* ------------- HELPERS DE DATA / TAREFA ------------- */
-
     formatDateStr(date) {
         const y = date.getFullYear();
         const m = String(date.getMonth() + 1).padStart(2, '0');
@@ -133,7 +116,6 @@ class CalendarView {
 
     taskMatchesDate(task, dateStr, dateObj, dow) {
         if (task.date === dateStr && !task.recurrence) return true;
-
         if (task.recurrence && Array.isArray(task.recurrence.days) && task.recurrence.days.length > 0) {
             if (task.recurrence.until) {
                 const until = new Date(task.recurrence.until + 'T23:59:59');
@@ -152,11 +134,6 @@ class CalendarView {
         return !!(task && task.recurrence && Array.isArray(task.recurrence.days) && task.recurrence.days.length > 0);
     }
 
-    /**
-     * Completude calculada POR OCORRÊNCIA:
-     * - Não recorrente: usa task.completed
-     * - Recorrente: checa task.completedDates
-     */
     isTaskCompletedOn(task, dateStr) {
         if (this.isTaskRecurring(task)) {
             const dates = Array.isArray(task.completedDates) ? task.completedDates : [];
@@ -165,77 +142,83 @@ class CalendarView {
         return !!task.completed;
     }
 
-    /**
-     * Retorna tarefas do dia (cópias enriquecidas com `_instanceDate` e `_instanceCompleted`),
-     * já filtrando ocorrências excluídas e ordenando.
-     */
     getTasksForDate(dateStr) {
         const dateObj = new Date(dateStr + 'T00:00:00');
         const dow = dateObj.getDay();
-
         const matches = this.tasks.filter(t => this.taskMatchesDate(t, dateStr, dateObj, dow));
-
-        // Filtra ocorrências excluídas
         const visible = matches.filter(t => {
             if (this.isTaskRecurring(t) && Array.isArray(t.excludedDates)) {
                 return !t.excludedDates.includes(dateStr);
             }
             return true;
         });
-
-        // Enriquece com info da instância
         const enriched = visible.map(task => ({
             ...task,
             _instanceDate: dateStr,
             _instanceCompleted: this.isTaskCompletedOn(task, dateStr)
         }));
-
         enriched.sort((a, b) => {
             const aHas = typeof a.order === 'number';
             const bHas = typeof b.order === 'number';
-            if (aHas && bHas) {
-                if (a.order !== b.order) return a.order - b.order;
-            } else if (aHas) {
-                return -1;
-            } else if (bHas) {
-                return 1;
-            }
+            if (aHas && bHas && a.order !== b.order) return a.order - b.order;
+            if (aHas && !bHas) return -1;
+            if (!aHas && bHas) return 1;
             return (a.time || '99:99').localeCompare(b.time || '99:99');
         });
-
         return enriched;
     }
 
-    /* ------------------- MONTH ------------------- */
+    /* ---------- Reutilizável: cria a barra de hover tools ---------- */
+    createHoverTools(dateStr, { compact = false } = {}) {
+        const tools = document.createElement('div');
+        tools.className = `day-hover-tools${compact ? ' compact' : ''}`;
+        tools.innerHTML = `
+            <button type="button" class="day-tool" data-action="marker" title="Marcar este dia">
+                <i class="fas fa-tag"></i>
+            </button>
+            <button type="button" class="day-tool" data-action="view" title="Ver dia">
+                <i class="fas fa-eye"></i>
+            </button>
+        `;
+        tools.querySelectorAll('.day-tool').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const action = btn.dataset.action;
+                if (action === 'marker') {
+                    if (this.onEditMarker) this.onEditMarker(dateStr, null);
+                } else if (action === 'view') {
+                    if (this.onGoToDay) this.onGoToDay(dateStr);
+                }
+            });
+        });
+        return tools;
+    }
+
+    /* ---------------------- MONTH ---------------------- */
 
     renderMonthGrid() {
         const monthGrid = document.getElementById('month-grid');
         if (!monthGrid) return;
-
         const MAX_MONTH_TASKS = 3;
+        const MAX_MONTH_MARKERS = 2;
 
         monthGrid.innerHTML = `
-            <div class="weekday-header">Dom</div>
-            <div class="weekday-header">Seg</div>
-            <div class="weekday-header">Ter</div>
-            <div class="weekday-header">Qua</div>
-            <div class="weekday-header">Qui</div>
-            <div class="weekday-header">Sex</div>
+            <div class="weekday-header">Dom</div><div class="weekday-header">Seg</div>
+            <div class="weekday-header">Ter</div><div class="weekday-header">Qua</div>
+            <div class="weekday-header">Qui</div><div class="weekday-header">Sex</div>
             <div class="weekday-header">Sáb</div>
         `;
 
         const year = this.currentDate.getFullYear();
         const month = this.currentDate.getMonth();
-
         const firstDay = new Date(year, month, 1).getDay();
         const daysInMonth = new Date(year, month + 1, 0).getDate();
         const daysInPrevMonth = new Date(year, month, 0).getDate();
 
         for (let i = firstDay - 1; i >= 0; i--) {
-            const dayNum = daysInPrevMonth - i;
             const dayEl = document.createElement('div');
             dayEl.className = 'calendar-day other-month';
-            dayEl.innerHTML = `<span class="day-number">${dayNum}</span>`;
+            dayEl.innerHTML = `<span class="day-number">${daysInPrevMonth - i}</span>`;
             monthGrid.appendChild(dayEl);
         }
 
@@ -247,26 +230,55 @@ class CalendarView {
             const dayEl = document.createElement('div');
             dayEl.className = `calendar-day ${isToday ? 'today' : ''}`;
 
-            // Day number
-            const numEl = document.createElement('span');
-            numEl.className = 'day-number';
-            numEl.textContent = d;
-            dayEl.appendChild(numEl);
+            // Barra superior
+            const topBar = document.createElement('div');
+            topBar.className = 'calendar-day-top';
 
-            // Marcador de dia (feriado etc.)
-            const marker = StorageManager.getDayMarker(dateStr);
-            if (marker) {
+            topBar.appendChild(this.createHoverTools(dateStr));
+
+            const numEl = document.createElement('span');
+            numEl.className = 'day-number day-number-link';
+            numEl.textContent = d;
+            numEl.title = 'Clique para ver o dia';
+            numEl.addEventListener('click', (e) => {
+                e.stopPropagation();
+                if (this.onGoToDay) this.onGoToDay(dateStr);
+            });
+            topBar.appendChild(numEl);
+            dayEl.appendChild(topBar);
+
+            // Marcadores
+            const markers = StorageManager.getDayMarkersForDate(dateStr);
+            const markersRow = document.createElement('div');
+            markersRow.className = 'calendar-day-markers';
+            markers.slice(0, MAX_MONTH_MARKERS).forEach(mk => {
                 const m = document.createElement('div');
                 m.className = 'day-marker';
-                m.style.backgroundColor = marker.color;
-                m.style.color = this.isLightColor(marker.color) ? '#1a202c' : '#ffffff';
-                m.textContent = marker.label;
-                m.title = marker.label;
-                dayEl.appendChild(m);
+                m.style.backgroundColor = mk.color;
+                m.style.color = this.isLightColor(mk.color) ? '#1a202c' : '#ffffff';
+                m.textContent = mk.label;
+                m.title = mk.label + (mk.recurrence ? ' (recorrente)' : '');
+                m.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    if (this.onEditMarker) this.onEditMarker(mk.date || dateStr, mk.id);
+                });
+                markersRow.appendChild(m);
+            });
+            if (markers.length > MAX_MONTH_MARKERS) {
+                const more = document.createElement('div');
+                more.className = 'day-marker day-marker-more';
+                more.textContent = `+${markers.length - MAX_MONTH_MARKERS}`;
+                more.title = `${markers.length} marcadores — clique para ver todos`;
+                more.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    if (this.onGoToDay) this.onGoToDay(dateStr);
+                });
+                markersRow.appendChild(more);
             }
+            dayEl.appendChild(markersRow);
 
+            // Tarefas
             const dayTasks = this.getTasksForDate(dateStr);
-
             dayTasks.slice(0, MAX_MONTH_TASKS).forEach(task => {
                 const badge = document.createElement('div');
                 badge.className = `task-item-badge ${task._instanceCompleted ? 'done' : ''}`;
@@ -290,15 +302,18 @@ class CalendarView {
                 more.textContent = `+${remaining} mais`;
                 more.addEventListener('click', (e) => {
                     e.stopPropagation();
-                    const [yy, mm, dd] = dateStr.split('-').map(Number);
-                    this.currentDate = new Date(yy, mm - 1, dd);
-                    this.setView('day');
+                    if (this.onGoToDay) this.onGoToDay(dateStr);
                 });
                 dayEl.appendChild(more);
             }
 
+            // Cliques
             dayEl.addEventListener('click', () => {
                 if (this.onDayClick) this.onDayClick(dateStr);
+            });
+            dayEl.addEventListener('contextmenu', (e) => {
+                e.preventDefault();
+                if (this.onEditMarker) this.onEditMarker(dateStr, null);
             });
 
             monthGrid.appendChild(dayEl);
@@ -314,7 +329,7 @@ class CalendarView {
         }
     }
 
-    /* ------------------- WEEK ------------------- */
+    /* ---------------------- WEEK ---------------------- */
 
     renderWeekGrid() {
         const weeklyGrid = document.getElementById('weekly-grid');
@@ -324,7 +339,7 @@ class CalendarView {
         const startOfWeek = new Date(this.currentDate);
         startOfWeek.setDate(this.currentDate.getDate() - this.currentDate.getDay());
 
-        const days = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
+        const days = ['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'];
         const today = new Date();
 
         for (let i = 0; i < 7; i++) {
@@ -336,25 +351,56 @@ class CalendarView {
             const col = document.createElement('div');
             col.className = `week-day-column ${isToday ? 'today' : ''}`;
 
+            // Cabeçalho clicável → view Diário
             const header = document.createElement('div');
             header.className = 'week-day-header';
+            header.title = 'Clique para ver o dia';
             header.innerHTML = `
                 <div class="week-day-name">${days[i]}</div>
                 <div class="week-day-date">${day.getDate()}</div>
+                <div class="week-day-tools">
+                    <button type="button" class="day-tool" data-action="marker" title="Marcar este dia">
+                        <i class="fas fa-tag"></i>
+                    </button>
+                    <button type="button" class="day-tool" data-action="view" title="Ver dia">
+                        <i class="fas fa-eye"></i>
+                    </button>
+                </div>
             `;
+            header.addEventListener('click', (e) => {
+                const tool = e.target.closest('.day-tool');
+                if (tool) {
+                    e.stopPropagation();
+                    if (tool.dataset.action === 'marker' && this.onEditMarker) {
+                        this.onEditMarker(dateStr, null);
+                    } else if (tool.dataset.action === 'view' && this.onGoToDay) {
+                        this.onGoToDay(dateStr);
+                    }
+                    return;
+                }
+                if (this.onGoToDay) this.onGoToDay(dateStr);
+            });
+            header.addEventListener('contextmenu', (e) => {
+                e.preventDefault();
+                if (this.onEditMarker) this.onEditMarker(dateStr, null);
+            });
             col.appendChild(header);
 
-            // Marcador de dia
-            const marker = StorageManager.getDayMarker(dateStr);
-            if (marker) {
+            // Marcadores
+            const markers = StorageManager.getDayMarkersForDate(dateStr);
+            markers.forEach(mk => {
                 const m = document.createElement('div');
                 m.className = 'day-marker';
-                m.style.backgroundColor = marker.color;
-                m.style.color = this.isLightColor(marker.color) ? '#1a202c' : '#ffffff';
-                m.textContent = marker.label;
-                m.title = marker.label;
+                m.style.backgroundColor = mk.color;
+                m.style.color = this.isLightColor(mk.color) ? '#1a202c' : '#ffffff';
+                m.textContent = mk.label;
+                m.title = mk.label + (mk.recurrence ? ' (recorrente)' : '');
+                m.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    if (this.onEditMarker) this.onEditMarker(mk.date || dateStr, mk.id);
+                });
                 col.appendChild(m);
-            }
+            });
 
             const tasksContainer = document.createElement('div');
             tasksContainer.className = 'week-day-tasks';
@@ -389,11 +435,13 @@ class CalendarView {
                 tasksContainer.appendChild(tBlock);
             });
 
-            col.appendChild(tasksContainer);
-
-            header.addEventListener('click', () => {
+            // Clique na área vazia → criar nova tarefa naquele dia
+            tasksContainer.addEventListener('click', (e) => {
+                if (e.target !== tasksContainer) return;
                 if (this.onDayClick) this.onDayClick(dateStr);
             });
+
+            col.appendChild(tasksContainer);
 
             weeklyGrid.appendChild(col);
         }
@@ -421,18 +469,14 @@ class CalendarView {
         orderedIds.forEach((id, idx) => {
             const task = this.tasks.find(t => t.id === id);
             if (!task) return;
-
             task.order = idx;
-
-            if (!this.isTaskRecurring(task) && task.date !== targetDate) {
-                task.date = targetDate;
-            }
+            if (!this.isTaskRecurring(task) && task.date !== targetDate) task.date = targetDate;
         });
 
         if (this.onTasksUpdated) this.onTasksUpdated(this.tasks);
     }
 
-    /* ------------------- DAY ------------------- */
+    /* ---------------------- DAY ---------------------- */
 
     renderDayView() {
         const container = document.getElementById('day-view-content');
@@ -446,33 +490,48 @@ class CalendarView {
         const weekdayCap = weekday.charAt(0).toUpperCase() + weekday.slice(1);
         const fullDate = d.toLocaleDateString('pt-BR', { day: 'numeric', month: 'long', year: 'numeric' });
 
-        // Marcador de dia
-        const marker = StorageManager.getDayMarker(dateStr);
-        let markerHtml = '';
-        if (marker) {
-            const mTextColor = this.isLightColor(marker.color) ? '#1a202c' : '#ffffff';
-            markerHtml = `
-                <div class="day-marker-section">
-                    <div class="day-marker-badge" style="background:${marker.color}; color:${mTextColor};">
-                        <i class="fas fa-tag"></i> ${this.escapeHtml(marker.label)}
-                        <button class="marker-action edit-marker" data-date="${dateStr}" title="Editar marcador">
+        // Marcadores múltiplos
+        const markers = StorageManager.getDayMarkersForDate(dateStr);
+        let markersHtml = '<div class="day-marker-section">';
+        if (markers.length === 0) {
+            markersHtml += `
+                <button class="btn btn-secondary btn-add-marker" data-date="${dateStr}">
+                    <i class="fas fa-tag"></i> Marcar este dia (feriado, prova…)
+                </button>
+            `;
+        } else {
+            markersHtml += markers.map(mk => {
+                const textColor = this.isLightColor(mk.color) ? '#1a202c' : '#ffffff';
+                const recBadge = mk.recurrence
+                    ? `<span class="marker-recur-badge" title="Recorrente">🔁</span>`
+                    : '';
+                return `
+                    <div class="day-marker-badge" style="background:${mk.color}; color:${textColor};">
+                        <i class="fas fa-tag"></i>
+                        ${this.escapeHtml(mk.label)}
+                        ${recBadge}
+                        <button class="marker-action edit-marker"
+                                data-date="${mk.date || dateStr}"
+                                data-marker-id="${mk.id}"
+                                title="Editar marcador">
                             <i class="fas fa-pen"></i>
                         </button>
-                        <button class="marker-action remove-marker" data-date="${dateStr}" title="Remover marcador">
+                        <button class="marker-action remove-marker"
+                                data-marker-id="${mk.id}"
+                                title="Remover marcador">
                             <i class="fas fa-times"></i>
                         </button>
                     </div>
-                </div>
-            `;
-        } else {
-            markerHtml = `
-                <div class="day-marker-section">
-                    <button class="btn btn-secondary btn-add-marker" data-date="${dateStr}">
-                        <i class="fas fa-tag"></i> Marcar este dia (feriado, prova…)
-                    </button>
-                </div>
+                `;
+            }).join('');
+            markersHtml += `
+                <button class="btn btn-secondary btn-add-marker btn-add-marker-compact"
+                        data-date="${dateStr}" title="Adicionar outro marcador">
+                    <i class="fas fa-plus"></i>
+                </button>
             `;
         }
+        markersHtml += '</div>';
 
         let html = `
             <div class="day-view-header">
@@ -481,7 +540,7 @@ class CalendarView {
                     ${dayTasks.length} tarefa${dayTasks.length === 1 ? '' : 's'} programada${dayTasks.length === 1 ? '' : 's'}
                 </div>
             </div>
-            ${markerHtml}
+            ${markersHtml}
         `;
 
         if (dayTasks.length === 0) {
@@ -536,7 +595,7 @@ class CalendarView {
 
         container.innerHTML = html;
 
-        // Clique em tarefa
+        // Cliques em tarefas
         container.querySelectorAll('.day-task-item').forEach(el => {
             el.addEventListener('click', () => {
                 const task = this.tasks.find(t => t.id === el.dataset.taskId);
@@ -544,50 +603,30 @@ class CalendarView {
             });
         });
 
-        // Adicionar / editar marcador
-        container.querySelectorAll('.btn-add-marker, .edit-marker').forEach(btn => {
+        // Botões de marcador
+        container.querySelectorAll('.btn-add-marker').forEach(btn => {
             btn.addEventListener('click', (e) => {
                 e.stopPropagation();
-                const ds = btn.dataset.date;
-                const existing = StorageManager.getDayMarker(ds);
-
-                const label = prompt(
-                    'Nome do marcador (ex: Feriado, Prova, Aniversário).\n' +
-                    'Deixe em branco e confirme para REMOVER o marcador:',
-                    existing ? existing.label : ''
-                );
-                if (label === null) return;
-
-                if (!label.trim()) {
-                    StorageManager.removeDayMarker(ds);
-                    this.render();
-                    return;
-                }
-
-                const color = prompt(
-                    'Cor do marcador (hexadecimal, ex: #F6AD55 para laranja, #FC8181 para vermelho):',
-                    existing ? existing.color : '#F6AD55'
-                ) || '#F6AD55';
-
-                StorageManager.setDayMarker(ds, label, color);
-                this.render();
+                if (this.onEditMarker) this.onEditMarker(btn.dataset.date, null);
             });
         });
-
-        // Remover marcador
+        container.querySelectorAll('.edit-marker').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                if (this.onEditMarker) this.onEditMarker(btn.dataset.date, btn.dataset.markerId);
+            });
+        });
         container.querySelectorAll('.remove-marker').forEach(btn => {
             btn.addEventListener('click', (e) => {
                 e.stopPropagation();
-                const ds = btn.dataset.date;
-                if (confirm('Remover marcador deste dia?')) {
-                    StorageManager.removeDayMarker(ds);
-                    this.render();
-                }
+                if (!confirm('Remover este marcador?')) return;
+                StorageManager.removeDayMarkerById(btn.dataset.markerId);
+                this.render();
             });
         });
     }
 
-    /* ------------------- YEAR ------------------- */
+    /* ---------------------- YEAR ---------------------- */
 
     renderYearGrid() {
         const yearGrid = document.getElementById('year-grid');
@@ -601,7 +640,19 @@ class CalendarView {
         monthNames.forEach((mName, monthIdx) => {
             const mDiv = document.createElement('div');
             mDiv.className = 'mini-month';
-            mDiv.innerHTML = `<div class="mini-month-title">${mName}</div>`;
+
+            const title = document.createElement('div');
+            title.className = 'mini-month-title mini-month-title-link';
+            title.textContent = mName;
+            title.title = `Ver ${mName} no modo Mensal`;
+            title.addEventListener('click', (e) => {
+                e.stopPropagation();
+                this.currentDate = new Date(year, monthIdx, 1);
+                const monthBtn = document.getElementById('btn-month-view');
+                if (monthBtn) monthBtn.click();
+                else this.setView('month');
+            });
+            mDiv.appendChild(title);
 
             const grid = document.createElement('div');
             grid.className = 'mini-month-grid';
@@ -626,50 +677,50 @@ class CalendarView {
                 const dateStr = `${year}-${String(monthIdx + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
                 const dayTasks = this.getTasksForDate(dateStr);
                 const hasTask = dayTasks.length > 0;
-                const marker = StorageManager.getDayMarker(dateStr);
+                const markers = StorageManager.getDayMarkersForDate(dateStr);
 
                 const cell = document.createElement('div');
-                cell.className = `mini-month-day ${hasTask ? 'has-task' : ''} ${marker ? 'has-marker' : ''}`;
+                cell.className = `mini-month-day ${hasTask ? 'has-task' : ''} ${markers.length ? 'has-marker' : ''}`;
                 cell.textContent = d;
-                if (marker) {
-                    cell.style.border = `2px solid ${marker.color}`;
-                    cell.title = marker.label;
+                cell.title = 'Clique para ver o dia';
+
+                if (markers.length > 0) {
+                    cell.style.border = `2px solid ${markers[0].color}`;
                 }
                 if (hasTask) {
-                    cell.title = cell.title ? cell.title + ' • ' + dayTasks.length + ' tarefa(s)' : `${dayTasks.length} tarefa(s)`;
                     const firstColor = StorageManager.getCategoryColor(dayTasks[0].category || 'Geral');
                     cell.style.backgroundColor = firstColor;
                     cell.style.color = this.isLightColor(firstColor) ? '#1a202c' : '#ffffff';
                 }
+
+                cell.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    if (this.onGoToDay) this.onGoToDay(dateStr);
+                });
+                cell.addEventListener('contextmenu', (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    if (this.onEditMarker) this.onEditMarker(dateStr, null);
+                });
+
                 grid.appendChild(cell);
             }
 
             mDiv.appendChild(grid);
-
-            mDiv.addEventListener('click', () => {
-                this.currentDate = new Date(year, monthIdx, 1);
-                this.currentView = 'month';
-                const monthBtn = document.getElementById('btn-month-view');
-                if (monthBtn) monthBtn.click();
-                else this.render();
-            });
-
             yearGrid.appendChild(mDiv);
         });
     }
 
-    /* ------------------- REPORTS ------------------- */
+    /* ---------------------- REPORTS ---------------------- */
 
     renderReports() {
         const totalTasks = this.tasks.length;
         const completedTasks = this.tasks.filter(t => t.completed).length;
         const completionRate = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0;
-
         const totalEl = document.getElementById('stat-total-tasks');
         const rateEl = document.getElementById('stat-completed-rate');
         if (totalEl) totalEl.textContent = totalTasks;
         if (rateEl) rateEl.textContent = `${completionRate}%`;
-
         this.renderCategoryChart();
     }
 
@@ -679,14 +730,10 @@ class CalendarView {
         if (!canvas || !wrapper) return;
 
         if (this.tasks.length === 0) {
-            if (this.chartInstance) {
-                this.chartInstance.destroy();
-                this.chartInstance = null;
-            }
+            if (this.chartInstance) { this.chartInstance.destroy(); this.chartInstance = null; }
             wrapper.innerHTML = '<div class="chart-empty">Nenhuma tarefa cadastrada ainda.<br>Adicione tarefas para ver o relatório por categoria.</div>';
             return;
         }
-
         if (!wrapper.querySelector('#categoryChart')) {
             wrapper.innerHTML = '<canvas id="categoryChart"></canvas>';
         }
@@ -711,18 +758,9 @@ class CalendarView {
 
         this.chartInstance = new Chart(ctx, {
             type: 'doughnut',
-            data: {
-                labels,
-                datasets: [{
-                    data,
-                    backgroundColor: colors,
-                    borderWidth: 2,
-                    borderColor: '#fff'
-                }]
-            },
+            data: { labels, datasets: [{ data, backgroundColor: colors, borderWidth: 2, borderColor: '#fff' }] },
             options: {
-                responsive: true,
-                maintainAspectRatio: false,
+                responsive: true, maintainAspectRatio: false,
                 plugins: {
                     legend: { position: 'bottom' },
                     title: { display: true, text: 'Tarefas por Categoria' }
