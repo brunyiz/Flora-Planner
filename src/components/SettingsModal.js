@@ -1,11 +1,12 @@
 /**
  * SettingsModal.js
- * Modal de Configurações Categorizadas (Interface, Planejamento, PDF, Geral e Categorias)
+ * Configurações em abas (Interface, Planejamento, Categorias, Marcadores, PDF, Geral).
  */
 
 class SettingsModal {
-    constructor({ onSettingsChanged }) {
+    constructor({ onSettingsChanged, onOpenMarker } = {}) {
         this.onSettingsChanged = onSettingsChanged;
+        this.onOpenMarker = onOpenMarker;
         this.initDOM();
         this.bindEvents();
     }
@@ -15,7 +16,7 @@ class SettingsModal {
         this.modal.className = 'modal';
         this.modal.id = 'settings-modal';
         this.modal.innerHTML = `
-            <div class="modal-content" style="max-width: 680px;">
+            <div class="modal-content" style="max-width: 720px;">
                 <div class="modal-header">
                     <h2><i class="fas fa-sliders-h"></i> Configurações do Sistema</h2>
                     <button class="close-btn" id="close-settings-btn">&times;</button>
@@ -31,8 +32,11 @@ class SettingsModal {
                     <button class="settings-tab-btn" data-tab="tab-categories">
                         <i class="fas fa-tags"></i> Categorias
                     </button>
+                    <button class="settings-tab-btn" data-tab="tab-markers">
+                        <i class="fas fa-bookmark"></i> Marcadores
+                    </button>
                     <button class="settings-tab-btn" data-tab="tab-pdf">
-                        <i class="fas fa-file-pdf"></i> PDF & Impressão
+                        <i class="fas fa-file-pdf"></i> PDF
                     </button>
                     <button class="settings-tab-btn" data-tab="tab-general">
                         <i class="fas fa-cog"></i> Geral
@@ -44,7 +48,7 @@ class SettingsModal {
                         <div class="form-group">
                             <label><i class="fas fa-moon"></i> Modo Escuro (Dark Mode)</label>
                             <label class="checkbox-group" style="margin-top: 5px;">
-                                <input type="checkbox" id="setting-dark-mode"> Ativar tema escuro de alto contraste
+                                <input type="checkbox" id="setting-dark-mode"> Ativar tema escuro
                             </label>
                         </div>
                         <div class="form-row" style="margin-top: 15px;">
@@ -72,7 +76,6 @@ class SettingsModal {
                     <div class="settings-tab-content" id="tab-categories">
                         <p style="font-size: 0.9rem; color: var(--cor-texto-light); margin-bottom: 14px;">
                             Gerencie as categorias disponíveis ao criar ou editar tarefas.
-                            Elas também alimentam o gráfico da tela de Relatórios.
                         </p>
                         <div class="category-list" id="category-list"></div>
                         <div class="category-add-row">
@@ -82,36 +85,49 @@ class SettingsModal {
                                 <i class="fas fa-plus"></i> Adicionar
                             </button>
                         </div>
-                        <small style="display:block; margin-top:10px; color: var(--cor-texto-light);">
-                            Dica: você também pode criar uma categoria direto no formulário de tarefa,
-                            escolhendo a opção “+ Nova categoria...”.
-                        </small>
+                    </div>
+
+                    <div class="settings-tab-content" id="tab-markers">
+                        <p style="font-size: 0.9rem; color: var(--cor-texto-light); margin-bottom: 14px;">
+                            Marcadores destacam datas especiais (feriados, provas, aniversários).
+                            Podem ser únicos ou recorrentes (ex: toda sexta-feira).
+                        </p>
+                        <div class="markers-actions">
+                            <button type="button" class="btn btn-primary" id="btn-add-marker-settings">
+                                <i class="fas fa-plus"></i> Novo marcador
+                            </button>
+                            <button type="button" class="btn btn-secondary" id="btn-import-holidays">
+                                <i class="fas fa-calendar-check"></i> Importar feriados brasileiros
+                            </button>
+                        </div>
+                        <div class="marker-year-row">
+                            <label>Ano para importar:</label>
+                            <select class="form-control" id="holiday-year" style="max-width: 120px;">
+                            </select>
+                        </div>
+                        <div class="markers-list" id="markers-list"></div>
                     </div>
 
                     <div class="settings-tab-content" id="tab-pdf">
                         <div class="form-group">
                             <label>Orientação Padrão de Impressão</label>
                             <select class="form-control" id="setting-pdf-orientation">
-                                <option value="landscape">Paisagem (Horizontal - Ideal para Calendário)</option>
+                                <option value="landscape">Paisagem (Horizontal)</option>
                                 <option value="portrait">Retrato (Vertical)</option>
                             </select>
                         </div>
                         <div class="form-group">
                             <label>Tamanho da Fonte no PDF</label>
                             <select class="form-control" id="setting-pdf-font-size">
-                                <option value="small">Pequeno (cabe mais conteúdo)</option>
-                                <option value="medium" selected>Médio (equilibrado)</option>
-                                <option value="large">Grande (alta legibilidade)</option>
+                                <option value="small">Pequeno</option>
+                                <option value="medium" selected>Médio</option>
+                                <option value="large">Grande</option>
                             </select>
                         </div>
-                        <small style="display:block; color: var(--cor-texto-light);">
-                            Essas opções também afetam a exportação em PNG.
-                        </small>
                     </div>
 
                     <div class="settings-tab-content" id="tab-general">
                         <p style="font-size: 0.9rem; color: var(--cor-texto-light);">
-                            Preferências gerais e informações sobre o armazenamento local.
                             Os dados ficam salvos no seu próprio navegador e podem ser
                             exportados via “Fazer Backup (.json)” no menu lateral.
                         </p>
@@ -125,6 +141,16 @@ class SettingsModal {
             </div>
         `;
         document.body.appendChild(this.modal);
+
+        // Ano para importação
+        const yearSelect = this.modal.querySelector('#holiday-year');
+        const currentYear = new Date().getFullYear();
+        for (let y = currentYear; y <= currentYear + 3; y++) {
+            const opt = document.createElement('option');
+            opt.value = y;
+            opt.textContent = y;
+            yearSelect.appendChild(opt);
+        }
     }
 
     bindEvents() {
@@ -136,7 +162,6 @@ class SettingsModal {
                 const targetTab = btn.getAttribute('data-tab');
                 tabBtns.forEach(b => b.classList.remove('active'));
                 tabContents.forEach(c => c.classList.remove('active'));
-
                 btn.classList.add('active');
                 this.modal.querySelector(`#${targetTab}`).classList.add('active');
             });
@@ -150,36 +175,36 @@ class SettingsModal {
             this.saveSettings();
         });
 
-        // Adicionar categoria
         this.modal.querySelector('#btn-add-category').addEventListener('click', () => this.handleAddCategory());
         this.modal.querySelector('#new-category-input').addEventListener('keydown', (e) => {
-            if (e.key === 'Enter') {
-                e.preventDefault();
-                this.handleAddCategory();
-            }
+            if (e.key === 'Enter') { e.preventDefault(); this.handleAddCategory(); }
+        });
+
+        this.modal.querySelector('#btn-add-marker-settings').addEventListener('click', () => {
+            if (this.onOpenMarker) this.onOpenMarker(null, null);
+        });
+
+        this.modal.querySelector('#btn-import-holidays').addEventListener('click', () => {
+            const year = parseInt(this.modal.querySelector('#holiday-year').value, 10);
+            const result = StorageManager.importBrazilianHolidays(year);
+            this.renderMarkersList();
+            alert(`Feriados de ${year} importados!\n\n${result.added} adicionado(s) de ${result.total} disponíveis.`);
+            if (this.onSettingsChanged) this.onSettingsChanged(StorageManager.getSettings());
         });
     }
 
     handleAddCategory() {
         const input = this.modal.querySelector('#new-category-input');
         const value = (input.value || '').trim();
-        if (!value) {
-            alert('Digite um nome para a categoria.');
-            return;
-        }
-        const created = StorageManager.addCategory(value);
-        if (!created) {
-            alert('Essa categoria já existe.');
-            return;
-        }
+        if (!value) { alert('Digite um nome para a categoria.'); return; }
+        if (!StorageManager.addCategory(value)) { alert('Essa categoria já existe.'); return; }
         input.value = '';
         this.renderCategoryList();
     }
 
-        renderCategoryList() {
+    renderCategoryList() {
         const list = this.modal.querySelector('#category-list');
         if (!list) return;
-
         const escapeHtml = (s) => String(s).replace(/[&<>"']/g, (c) => ({
             '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
         }[c]));
@@ -192,30 +217,24 @@ class SettingsModal {
             return `
                 <div class="category-item">
                     <div class="category-item-left">
-                        <input type="color"
-                               class="category-color-input"
+                        <input type="color" class="category-color-input"
                                data-category="${escapeHtml(cat.name)}"
-                               value="${escapeHtml(cat.color)}"
-                               title="Cor da categoria">
+                               value="${escapeHtml(cat.color)}" title="Cor da categoria">
                         <span class="category-name">${escapeHtml(cat.name)}</span>
-                        <small class="category-count">
-                            (${count} tarefa${count === 1 ? '' : 's'})
-                        </small>
+                        <small class="category-count">(${count} tarefa${count === 1 ? '' : 's'})</small>
                     </div>
                     <button type="button" class="category-remove"
-                            data-category="${escapeHtml(cat.name)}"
-                            title="Remover categoria">
+                            data-category="${escapeHtml(cat.name)}" title="Remover categoria">
                         <i class="fas fa-times"></i>
                     </button>
                 </div>
             `;
         }).join('');
 
-        // Remover categoria
         list.querySelectorAll('.category-remove').forEach(btn => {
             btn.addEventListener('click', () => {
                 const cat = btn.getAttribute('data-category');
-                if (confirm(`Remover a categoria "${cat}"?\n\nTarefas que já usam essa categoria continuarão existindo; apenas a opção some da lista.`)) {
+                if (confirm(`Remover a categoria "${cat}"?`)) {
                     StorageManager.removeCategory(cat);
                     this.renderCategoryList();
                     if (this.onSettingsChanged) this.onSettingsChanged(StorageManager.getSettings());
@@ -223,11 +242,83 @@ class SettingsModal {
             });
         });
 
-        // Alterar cor — salva na hora e atualiza o calendário atrás do modal
         list.querySelectorAll('.category-color-input').forEach(input => {
             input.addEventListener('input', () => {
-                const cat = input.getAttribute('data-category');
-                StorageManager.updateCategoryColor(cat, input.value);
+                StorageManager.updateCategoryColor(input.getAttribute('data-category'), input.value);
+                if (this.onSettingsChanged) this.onSettingsChanged(StorageManager.getSettings());
+            });
+        });
+    }
+
+    renderMarkersList() {
+        const list = this.modal.querySelector('#markers-list');
+        if (!list) return;
+        const escapeHtml = (s) => String(s).replace(/[&<>"']/g, (c) => ({
+            '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+        }[c]));
+
+        const markers = StorageManager.getDayMarkers();
+
+        if (markers.length === 0) {
+            list.innerHTML = `
+                <div class="markers-empty">
+                    Nenhum marcador cadastrado ainda. Use o botão acima ou clique no ícone 🏷️ em qualquer dia do calendário.
+                </div>
+            `;
+            return;
+        }
+
+        const dayNames = ['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'];
+        const sorted = [...markers].sort((a, b) => {
+            const aKey = a.date || '9999-99-99';
+            const bKey = b.date || '9999-99-99';
+            return aKey.localeCompare(bKey);
+        });
+
+        list.innerHTML = sorted.map(mk => {
+            let when;
+            if (mk.recurrence && mk.recurrence.days.length > 0) {
+                const daysLabel = mk.recurrence.days.map(d => dayNames[d]).join(', ');
+                const until = mk.recurrence.until ? ` até ${mk.recurrence.until}` : '';
+                when = `🔁 ${daysLabel}${until}`;
+                if (mk.date) when = `${mk.date} • ${when}`;
+            } else {
+                when = mk.date || '—';
+            }
+            const textColor = StorageManager.DEFAULT_CATEGORY_COLOR; // não usado
+            return `
+                <div class="marker-item">
+                    <div class="marker-item-left">
+                        <span class="marker-swatch" style="background:${escapeHtml(mk.color)};"></span>
+                        <div class="marker-item-info">
+                            <div class="marker-item-label">${escapeHtml(mk.label)}</div>
+                            <div class="marker-item-when">${escapeHtml(when)}</div>
+                        </div>
+                    </div>
+                    <div class="marker-item-actions">
+                        <button type="button" class="marker-item-btn edit"
+                                data-marker-id="${escapeHtml(mk.id)}" title="Editar">
+                            <i class="fas fa-pen"></i>
+                        </button>
+                        <button type="button" class="marker-item-btn delete"
+                                data-marker-id="${escapeHtml(mk.id)}" title="Excluir">
+                            <i class="fas fa-trash"></i>
+                        </button>
+                    </div>
+                </div>
+            `;
+        }).join('');
+
+        list.querySelectorAll('.marker-item-btn.edit').forEach(btn => {
+            btn.addEventListener('click', () => {
+                if (this.onOpenMarker) this.onOpenMarker(null, btn.dataset.markerId);
+            });
+        });
+        list.querySelectorAll('.marker-item-btn.delete').forEach(btn => {
+            btn.addEventListener('click', () => {
+                if (!confirm('Excluir este marcador?')) return;
+                StorageManager.removeDayMarkerById(btn.dataset.markerId);
+                this.renderMarkersList();
                 if (this.onSettingsChanged) this.onSettingsChanged(StorageManager.getSettings());
             });
         });
@@ -235,37 +326,30 @@ class SettingsModal {
 
     open() {
         const settings = StorageManager.getSettings();
-
-        document.getElementById('setting-dark-mode').checked = settings.darkMode;
-        document.getElementById('setting-primary-color').value = settings.primaryColor;
-        document.getElementById('setting-title-color').value = settings.titleColor;
-        document.getElementById('setting-start-week').value = settings.startOfWeek;
-        document.getElementById('setting-pdf-orientation').value = settings.pdfOrientation;
-        document.getElementById('setting-pdf-font-size').value = settings.pdfFontSize;
-
+        this.modal.querySelector('#setting-dark-mode').checked = settings.darkMode;
+        this.modal.querySelector('#setting-primary-color').value = settings.primaryColor;
+        this.modal.querySelector('#setting-title-color').value = settings.titleColor;
+        this.modal.querySelector('#setting-start-week').value = settings.startOfWeek;
+        this.modal.querySelector('#setting-pdf-orientation').value = settings.pdfOrientation;
+        this.modal.querySelector('#setting-pdf-font-size').value = settings.pdfFontSize;
         this.renderCategoryList();
-
+        this.renderMarkersList();
         this.modal.style.display = 'flex';
     }
 
-    close() {
-        this.modal.style.display = 'none';
-    }
+    close() { this.modal.style.display = 'none'; }
 
     saveSettings() {
-        // Preserva campos que não são formulário (ex.: categorias)
         const current = StorageManager.getSettings();
-
         const newSettings = {
             ...current,
-            darkMode: document.getElementById('setting-dark-mode').checked,
-            primaryColor: document.getElementById('setting-primary-color').value,
-            titleColor: document.getElementById('setting-title-color').value,
-            startOfWeek: parseInt(document.getElementById('setting-start-week').value, 10),
-            pdfOrientation: document.getElementById('setting-pdf-orientation').value,
-            pdfFontSize: document.getElementById('setting-pdf-font-size').value
+            darkMode: this.modal.querySelector('#setting-dark-mode').checked,
+            primaryColor: this.modal.querySelector('#setting-primary-color').value,
+            titleColor: this.modal.querySelector('#setting-title-color').value,
+            startOfWeek: parseInt(this.modal.querySelector('#setting-start-week').value, 10),
+            pdfOrientation: this.modal.querySelector('#setting-pdf-orientation').value,
+            pdfFontSize: this.modal.querySelector('#setting-pdf-font-size').value
         };
-
         StorageManager.saveSettings(newSettings);
 
         document.body.classList.toggle('dark-mode', !!newSettings.darkMode);
@@ -273,7 +357,6 @@ class SettingsModal {
         document.documentElement.style.setProperty('--cor-titulo', newSettings.titleColor);
 
         if (this.onSettingsChanged) this.onSettingsChanged(newSettings);
-
         this.close();
     }
 }
