@@ -1,6 +1,6 @@
 /**
  * PdfExporter.js
- * PDF/PNG do planejamento Mensal, Semanal, Diário e Anual.
+ * PDF/PNG do planejamento (Mensal, Semanal, Diário, Anual) com marcadores de dia.
  */
 
 class PdfExporter {
@@ -33,7 +33,15 @@ class PdfExporter {
             return false;
         });
 
-        filtered.sort((a, b) => {
+        // Filtra ocorrências excluídas (recorrentes)
+        const visible = filtered.filter(task => {
+            if (task.recurrence && Array.isArray(task.excludedDates)) {
+                return !task.excludedDates.includes(dateStr);
+            }
+            return true;
+        });
+
+        visible.sort((a, b) => {
             const aHas = typeof a.order === 'number';
             const bHas = typeof b.order === 'number';
             if (aHas && bHas && a.order !== b.order) return a.order - b.order;
@@ -42,13 +50,30 @@ class PdfExporter {
             return (a.time || '99:99').localeCompare(b.time || '99:99');
         });
 
-        return filtered;
+        return visible;
+    }
+
+    static getMarkersForDate(dateStr) {
+        return StorageManager.getDayMarkersForDate(dateStr);
     }
 
     static escapeHtml(str) {
         return String(str || '').replace(/[&<>"']/g, (c) => ({
             '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
         }[c]));
+    }
+
+    static isLightColor(hex) {
+        const h = String(hex).replace('#', '');
+        if (h.length !== 6) return false;
+        const r = parseInt(h.substr(0, 2), 16);
+        const g = parseInt(h.substr(2, 2), 16);
+        const b = parseInt(h.substr(4, 2), 16);
+        return (0.299 * r + 0.587 * g + 0.114 * b) > 170;
+    }
+
+    static markerTextColor(hex) {
+        return this.isLightColor(hex) ? '#1a202c' : '#ffffff';
     }
 
     static openPrintWindow(html, title) {
@@ -77,12 +102,29 @@ class PdfExporter {
 
         const fontSizes = { small: '7.5pt', medium: '8.5pt', large: '10pt' };
         const taskFontSize = fontSizes[settings.pdfFontSize] || fontSizes.medium;
+        const markerFontSize = '6.5pt';
 
         const buildTaskHtml = (task) => {
             const timeStr = task.time
                 ? (task.endTime ? `${task.time}-${task.endTime}` : task.time) + ' • '
                 : '';
             return `<div class="pdf-task ${task.completed ? 'completed' : ''}">&bull; ${this.escapeHtml(timeStr)}${this.escapeHtml(task.title)}</div>`;
+        };
+
+        const buildMarkersHtml = (markers, limit = 2) => {
+            if (!markers.length) return '';
+            const shown = markers.slice(0, limit);
+            const extra = markers.length - limit;
+            const badges = shown.map(mk => `
+                <div class="pdf-marker"
+                     style="background:${this.escapeHtml(mk.color)}; color:${this.markerTextColor(mk.color)};">
+                    ${this.escapeHtml(mk.label)}
+                </div>
+            `).join('');
+            const more = extra > 0
+                ? `<div class="pdf-marker pdf-marker-more">+${extra}</div>`
+                : '';
+            return `<div class="pdf-day-markers">${badges}${more}</div>`;
         };
 
         let cells = '';
@@ -92,7 +134,15 @@ class PdfExporter {
         for (let d = 1; d <= daysInMonth; d++) {
             const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
             const dayTasks = this.getTasksForDate(tasks, dateStr);
-            cells += `<div class="pdf-day"><span class="pdf-day-num">${d}</span><div class="pdf-task-list">${dayTasks.map(buildTaskHtml).join('')}</div></div>`;
+            const markers = this.getMarkersForDate(dateStr);
+            const markersHtml = buildMarkersHtml(markers);
+            cells += `
+                <div class="pdf-day">
+                    <span class="pdf-day-num">${d}</span>
+                    ${markersHtml}
+                    <div class="pdf-task-list">${dayTasks.map(buildTaskHtml).join('')}</div>
+                </div>
+            `;
         }
         const total = firstDay + daysInMonth;
         const remaining = (7 - (total % 7)) % 7;
@@ -110,7 +160,21 @@ class PdfExporter {
             .pdf-weekday { background: ${settings.primaryColor || '#D8B4FE'}; color: #fff; font-weight: bold; text-align: center; padding: 8px 0; font-size: 10pt; text-transform: uppercase; }
             .pdf-day { min-height: 100px; border: 1px solid #E2E8F0; padding: 6px; box-sizing: border-box; display: flex; flex-direction: column; background: #fff; }
             .pdf-day.other-month { background: #F7FAFC; color: #A0AEC0; }
-            .pdf-day-num { font-weight: bold; font-size: 11pt; align-self: flex-end; margin-bottom: 4px; }
+            .pdf-day-num { font-weight: bold; font-size: 11pt; align-self: flex-end; margin-bottom: 2px; }
+            .pdf-day-markers { display: flex; flex-direction: column; gap: 2px; margin-bottom: 4px; }
+            .pdf-marker {
+                font-size: ${markerFontSize};
+                padding: 1.5px 5px;
+                border-radius: 3px;
+                font-weight: 700;
+                text-transform: uppercase;
+                letter-spacing: 0.2px;
+                overflow: hidden;
+                text-overflow: ellipsis;
+                white-space: nowrap;
+                text-align: center;
+            }
+            .pdf-marker-more { background: #E2E8F0 !important; color: #4A5568 !important; }
             .pdf-task-list { display: flex; flex-direction: column; gap: 3px; font-size: ${taskFontSize}; }
             .pdf-task { background: #EDF2F7; padding: 2px 4px; border-radius: 4px; border-left: 3px solid ${settings.primaryColor || '#D8B4FE'}; overflow-wrap: break-word; }
             .pdf-task.completed { text-decoration: line-through; opacity: 0.6; }
@@ -166,13 +230,24 @@ class PdfExporter {
         const columnsHtml = days.map((d, i) => {
             const dateStr = this.formatDateStr(d);
             const dayTasks = this.getTasksForDate(tasks, dateStr);
+            const markers = this.getMarkersForDate(dateStr);
+
+            const markersHtml = markers.map(mk => `
+                <div class="pdf-week-marker"
+                     style="background:${this.escapeHtml(mk.color)}; color:${this.markerTextColor(mk.color)};">
+                    🏷️ ${this.escapeHtml(mk.label)}
+                </div>
+            `).join('');
 
             const tasksHtml = dayTasks.map(t => {
                 const timeStr = t.time
                     ? (t.endTime ? `${t.time} - ${t.endTime}` : t.time)
                     : '';
+                const completedOn = t.recurrence
+                    ? (Array.isArray(t.completedDates) && t.completedDates.includes(dateStr))
+                    : t.completed;
                 return `
-                    <div class="pdf-week-task ${t.completed ? 'completed' : ''}">
+                    <div class="pdf-week-task ${completedOn ? 'completed' : ''}">
                         ${timeStr ? `<div class="pdf-week-task-time">${this.escapeHtml(timeStr)}</div>` : ''}
                         <div class="pdf-week-task-title">${this.escapeHtml(t.title)}</div>
                         ${t.notes ? `<div class="pdf-week-task-notes">${this.escapeHtml(t.notes).replace(/\n/g, '<br>')}</div>` : ''}
@@ -186,6 +261,7 @@ class PdfExporter {
                         <div class="pdf-week-day-name">${dayNames[i]}</div>
                         <div class="pdf-week-day-date">${d.getDate()}/${d.getMonth() + 1}</div>
                     </div>
+                    ${markersHtml ? `<div class="pdf-week-markers">${markersHtml}</div>` : ''}
                     <div class="pdf-week-body">
                         ${tasksHtml || '<div class="pdf-week-empty">—</div>'}
                     </div>
@@ -200,11 +276,22 @@ class PdfExporter {
             .pdf-title { font-size: 20pt; font-weight: bold; color: ${settings.titleColor || '#D46FA8'}; }
             .pdf-subtitle { font-size: 12pt; color: #718096; }
             .pdf-week-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; }
-            .pdf-week-col { border: 1px solid #CBD5E0; border-radius: 8px; overflow: hidden; background: #fff; }
+            .pdf-week-col { border: 1px solid #CBD5E0; border-radius: 8px; overflow: hidden; background: #fff; display: flex; flex-direction: column; }
             .pdf-week-header { background: ${settings.primaryColor || '#D8B4FE'}; color: #fff; text-align: center; padding: 6px; }
             .pdf-week-day-name { font-weight: bold; text-transform: uppercase; font-size: 9pt; }
             .pdf-week-day-date { font-size: 13pt; font-weight: bold; }
-            .pdf-week-body { padding: 6px; display: flex; flex-direction: column; gap: 4px; min-height: 130px; font-size: ${taskFontSize}; }
+            .pdf-week-markers { display: flex; flex-direction: column; gap: 3px; padding: 5px 5px 0; }
+            .pdf-week-marker {
+                font-size: 7.5pt;
+                padding: 3px 6px;
+                border-radius: 4px;
+                font-weight: 700;
+                text-align: center;
+                overflow: hidden;
+                text-overflow: ellipsis;
+                white-space: nowrap;
+            }
+            .pdf-week-body { padding: 6px; display: flex; flex-direction: column; gap: 4px; min-height: 130px; font-size: ${taskFontSize}; flex: 1; }
             .pdf-week-task { border-left: 3px solid ${settings.primaryColor || '#D8B4FE'}; background: #EDF2F7; padding: 4px 6px; border-radius: 4px; overflow-wrap: break-word; }
             .pdf-week-task-time { font-weight: bold; font-size: 8pt; color: #4A5568; }
             .pdf-week-task-title { margin-top: 2px; }
@@ -236,10 +323,22 @@ class PdfExporter {
         const settings = StorageManager.getSettings();
         const dateStr = this.formatDateStr(currentDate);
         const dayTasks = this.getTasksForDate(tasks, dateStr);
+        const markers = this.getMarkersForDate(dateStr);
 
         const weekday = currentDate.toLocaleDateString('pt-BR', { weekday: 'long' });
         const fullDate = currentDate.toLocaleDateString('pt-BR', { day: 'numeric', month: 'long', year: 'numeric' });
         const title = `${weekday.charAt(0).toUpperCase() + weekday.slice(1)}, ${fullDate}`;
+
+        const markersHtml = markers.length > 0
+            ? `<div class="pdf-day-markers-top">${markers.map(mk => `
+                <div class="pdf-day-marker-large"
+                     style="background:${this.escapeHtml(mk.color)}; color:${this.markerTextColor(mk.color)};">
+                    <span class="mk-icon">🏷️</span>
+                    ${this.escapeHtml(mk.label)}
+                    ${mk.recurrence ? '<span class="mk-recur">🔁</span>' : ''}
+                </div>
+            `).join('')}</div>`
+            : '';
 
         const tasksHtml = dayTasks.length === 0
             ? '<div class="pdf-day-empty">Nenhuma tarefa agendada para este dia.</div>'
@@ -248,8 +347,11 @@ class PdfExporter {
                     ? (t.endTime ? `${t.time} - ${t.endTime}` : t.time)
                     : 'Sem horário';
                 const color = StorageManager.getCategoryColor(t.category || 'Geral');
+                const completedOn = t.recurrence
+                    ? (Array.isArray(t.completedDates) && t.completedDates.includes(dateStr))
+                    : t.completed;
                 return `
-                    <div class="pdf-day-task ${t.completed ? 'completed' : ''}" style="border-left-color: ${color};">
+                    <div class="pdf-day-task ${completedOn ? 'completed' : ''}" style="border-left-color: ${color};">
                         <div class="pdf-day-task-head">
                             <div class="pdf-day-task-time">${this.escapeHtml(timeStr)}</div>
                             <div class="pdf-day-task-cat" style="background:${color};">${this.escapeHtml(t.category || 'Geral')}</div>
@@ -264,9 +366,30 @@ class PdfExporter {
         const printStyles = `
             @page { size: A4 portrait; margin: 15mm; }
             body { font-family: 'Segoe UI', sans-serif; margin: 0; padding: 0; color: #2D3748; }
-            .pdf-header { text-align: center; margin-bottom: 20px; padding-bottom: 12px; border-bottom: 3px solid ${settings.primaryColor || '#D8B4FE'}; }
+            .pdf-header { text-align: center; margin-bottom: 15px; padding-bottom: 12px; border-bottom: 3px solid ${settings.primaryColor || '#D8B4FE'}; }
             .pdf-title { font-size: 22pt; font-weight: bold; color: ${settings.titleColor || '#D46FA8'}; text-transform: capitalize; }
             .pdf-subtitle { font-size: 11pt; color: #718096; margin-top: 4px; }
+            .pdf-day-markers-top {
+                display: flex;
+                flex-wrap: wrap;
+                gap: 8px;
+                margin-bottom: 20px;
+                padding-bottom: 14px;
+                border-bottom: 2px dashed #E2E8F0;
+            }
+            .pdf-day-marker-large {
+                display: inline-flex;
+                align-items: center;
+                gap: 6px;
+                padding: 8px 16px;
+                border-radius: 24px;
+                font-weight: 700;
+                font-size: 12pt;
+                letter-spacing: 0.3px;
+                box-shadow: 0 1px 3px rgba(0,0,0,0.12);
+            }
+            .pdf-day-marker-large .mk-icon { font-size: 11pt; }
+            .pdf-day-marker-large .mk-recur { font-size: 10pt; opacity: 0.85; }
             .pdf-day-tasks { display: flex; flex-direction: column; gap: 10px; }
             .pdf-day-task { border-left: 5px solid #CBD5E0; background: #F7FAFC; padding: 10px 14px; border-radius: 6px; page-break-inside: avoid; }
             .pdf-day-task-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
@@ -287,6 +410,7 @@ class PdfExporter {
                     <div class="pdf-title">${title}</div>
                     <div class="pdf-subtitle">Planejamento Diário Flora Planner &bull; ${dayTasks.length} tarefa${dayTasks.length === 1 ? '' : 's'}</div>
                 </div>
+                ${markersHtml}
                 <div class="pdf-day-tasks">${tasksHtml}</div>
                 <div class="pdf-footer">Gerado pelo Flora Planner</div>
                 <script>window.onload = function() { window.focus(); window.print(); };<\/script>
@@ -319,9 +443,35 @@ class PdfExporter {
             for (let d = 1; d <= daysInMonth; d++) {
                 const dateStr = `${year}-${String(m + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
                 const dayTasks = this.getTasksForDate(tasks, dateStr);
+                const markers = this.getMarkersForDate(dateStr);
                 const hasTask = dayTasks.length > 0;
-                const color = hasTask ? StorageManager.getCategoryColor(dayTasks[0].category || 'Geral') : '';
-                cellsHtml += `<div class="pdf-mini-day ${hasTask ? 'has-task' : ''}" ${hasTask ? `style="background:${color};color:#fff;"` : ''}>${d}</div>`;
+                const hasMarker = markers.length > 0;
+
+                const color = hasTask
+                    ? StorageManager.getCategoryColor(dayTasks[0].category || 'Geral')
+                    : '';
+
+                const classes = ['pdf-mini-day'];
+                if (hasTask) classes.push('has-task');
+                if (hasMarker) classes.push('has-marker');
+
+                const inlineStyles = [];
+                if (hasTask) {
+                    inlineStyles.push(`background:${color}`);
+                    inlineStyles.push(`color:${this.markerTextColor(color)}`);
+                }
+                if (hasMarker) {
+                    inlineStyles.push(`border-color:${markers[0].color}`);
+                }
+
+                const title = [
+                    hasMarker ? markers.map(mk => mk.label).join(' • ') : '',
+                    hasTask ? `${dayTasks.length} tarefa${dayTasks.length === 1 ? '' : 's'}` : ''
+                ].filter(Boolean).join(' — ');
+
+                cellsHtml += `<div class="${classes.join(' ')}"
+                                   style="${inlineStyles.join(';')}"
+                                   title="${this.escapeHtml(title)}">${d}</div>`;
             }
 
             monthsHtml += `
@@ -343,9 +493,22 @@ class PdfExporter {
             .pdf-mini-month-title { font-weight: bold; color: ${settings.titleColor || '#D46FA8'}; text-align: center; margin-bottom: 6px; font-size: 11pt; }
             .pdf-mini-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; }
             .pdf-mini-header { font-size: 6pt; text-align: center; color: #718096; font-weight: bold; }
-            .pdf-mini-day { font-size: 7pt; text-align: center; padding: 3px 0; border-radius: 3px; color: #4A5568; }
+            .pdf-mini-day {
+                font-size: 7pt;
+                text-align: center;
+                padding: 3px 0;
+                border-radius: 3px;
+                color: #4A5568;
+                border: 1.5px solid transparent;
+                box-sizing: border-box;
+            }
             .pdf-mini-day.empty { visibility: hidden; }
             .pdf-mini-day.has-task { font-weight: bold; }
+            .pdf-mini-day.has-marker { font-weight: 700; }
+            .pdf-mini-day.has-marker:not(.has-task) {
+                background: #FEF3C7;
+                color: #78350F;
+            }
             .pdf-footer { margin-top: 15px; text-align: center; font-size: 8pt; color: #A0AEC0; }
         `;
 
@@ -368,8 +531,8 @@ class PdfExporter {
     /* ==================== PNG (via html2canvas) ==================== */
 
     /**
-     * Exporta qualquer elemento do DOM como PNG de alta resolução.
-     * Ideal para as visões Semanal / Diário / Anual (captura com notas).
+     * Exporta o DOM atual como PNG.
+     * Como o DOM já renderiza marcadores, eles aparecem automaticamente.
      */
     static async exportElementAsPng(elementId, filename) {
         const el = document.getElementById(elementId);
@@ -378,16 +541,14 @@ class PdfExporter {
             return;
         }
         if (typeof html2canvas === 'undefined') {
-            alert('Biblioteca html2canvas não carregada. Verifique a conexão com a internet.');
+            alert('Biblioteca html2canvas não carregada.');
             return;
         }
 
-        // Garante que o elemento está visível
         const previousDisplay = el.style.display;
         if (previousDisplay === 'none') el.style.display = 'block';
 
         try {
-            // Fundo branco sólido — evita transparência
             const canvas = await html2canvas(el, {
                 scale: 2,
                 backgroundColor: '#ffffff',
@@ -398,7 +559,6 @@ class PdfExporter {
             });
             const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
             if (!blob) throw new Error('Falha ao gerar blob PNG.');
-
             await StorageManager.saveBlob(blob, filename, 'image/png');
         } catch (err) {
             console.error('Erro ao gerar PNG:', err);
@@ -408,7 +568,7 @@ class PdfExporter {
         }
     }
 
-    /* ==================== PNG MENSAL (manual canvas) ==================== */
+    /* ==================== PNG MENSAL (canvas manual) ==================== */
 
     static async exportMonthlyCalendarAsPng(currentDate, tasks) {
         const settings = StorageManager.getSettings();
@@ -425,7 +585,7 @@ class PdfExporter {
         const headerH = 120;
         const weekdayH = 46;
         const cellW = 210;
-        const cellH = 180;
+        const cellH = 200; // aumentei levemente para acomodar marcadores
         const cols = 7;
 
         const totalCells = Math.ceil((firstDay + daysInMonth) / 7) * 7;
@@ -444,6 +604,7 @@ class PdfExporter {
         ctx.fillStyle = '#ffffff';
         ctx.fillRect(0, 0, baseW, baseH);
 
+        // Cabeçalho
         ctx.fillStyle = settings.titleColor || '#D46FA8';
         ctx.font = 'bold 46px "Segoe UI", Tahoma, sans-serif';
         ctx.textAlign = 'center';
@@ -457,16 +618,17 @@ class PdfExporter {
         const gridX = padding;
         const gridY = padding + headerH;
 
+        // Faixa dos dias da semana
         const weekdays = ['Domingo','Segunda','Terça','Quarta','Quinta','Sexta','Sábado'];
         ctx.fillStyle = settings.primaryColor || '#D8B4FE';
         ctx.fillRect(gridX, gridY, cols * cellW, weekdayH);
-
         ctx.fillStyle = '#ffffff';
         ctx.font = 'bold 16px "Segoe UI", Tahoma, sans-serif';
         weekdays.forEach((w, i) => {
             ctx.fillText(w, gridX + i * cellW + cellW / 2, gridY + weekdayH / 2);
         });
 
+        // Coleta células
         const cells = [];
         for (let i = firstDay - 1; i >= 0; i--) {
             cells.push({ num: daysInPrevMonth - i, other: true });
@@ -483,19 +645,36 @@ class PdfExporter {
         const taskFontSize = fontSizeMap[settings.pdfFontSize] || 13;
         const lineHeight = taskFontSize + 7;
 
+        // Parâmetros dos marcadores
+        const markerH = 18;
+        const markerGap = 3;
+        const markerFontSize = 10;
+
+        // Helper: desenha retângulo arredondado
+        const roundRect = (x, y, w, h, r) => {
+            ctx.beginPath();
+            ctx.moveTo(x + r, y);
+            ctx.arcTo(x + w, y, x + w, y + h, r);
+            ctx.arcTo(x + w, y + h, x, y + h, r);
+            ctx.arcTo(x, y + h, x, y, r);
+            ctx.arcTo(x, y, x + w, y, r);
+            ctx.closePath();
+        };
+
         cells.forEach((cell, idx) => {
             const row = Math.floor(idx / 7);
             const col = idx % 7;
             const x = gridX + col * cellW;
             const y = gridY + weekdayH + row * cellH;
 
+            // Fundo e borda
             ctx.fillStyle = cell.other ? '#F7FAFC' : '#ffffff';
             ctx.fillRect(x, y, cellW, cellH);
-
             ctx.strokeStyle = '#E2E8F0';
             ctx.lineWidth = 1;
             ctx.strokeRect(x + 0.5, y + 0.5, cellW - 1, cellH - 1);
 
+            // Número do dia
             ctx.fillStyle = cell.other ? '#A0AEC0' : '#2D3748';
             ctx.font = 'bold 20px "Segoe UI", Tahoma, sans-serif';
             ctx.textAlign = 'right';
@@ -504,13 +683,65 @@ class PdfExporter {
 
             if (!cell.dateStr) return;
 
-            const dayTasks = this.getTasksForDate(tasks, cell.dateStr);
+            // ----- MARCADORES -----
+            const markers = this.getMarkersForDate(cell.dateStr);
+            let cursorY = y + 40;
 
-            let ty = y + 40;
+            if (markers.length > 0) {
+                const maxVisible = 3;
+                const visible = markers.slice(0, maxVisible);
+                const extra = markers.length - maxVisible;
+
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.font = `bold ${markerFontSize}px "Segoe UI", Tahoma, sans-serif`;
+
+                visible.forEach(mk => {
+                    const mkX = x + 8;
+                    const mkW = cellW - 16;
+                    const mkY = cursorY;
+
+                    // Fundo colorido
+                    ctx.fillStyle = mk.color;
+                    roundRect(mkX, mkY, mkW, markerH, 4);
+                    ctx.fill();
+
+                    // Texto (truncado)
+                    ctx.fillStyle = this.markerTextColor(mk.color);
+                    const label = String(mk.label).toUpperCase();
+                    let display = label;
+                    while (ctx.measureText(display).width > mkW - 12 && display.length > 4) {
+                        display = display.slice(0, -2);
+                    }
+                    if (display !== label) display = display.slice(0, -1) + '…';
+                    ctx.fillText(display, mkX + mkW / 2, mkY + markerH / 2 + 0.5);
+
+                    cursorY += markerH + markerGap;
+                });
+
+                if (extra > 0) {
+                    const mkX = x + 8;
+                    const mkW = cellW - 16;
+                    ctx.fillStyle = '#E2E8F0';
+                    roundRect(mkX, cursorY, mkW, markerH, 4);
+                    ctx.fill();
+                    ctx.fillStyle = '#4A5568';
+                    ctx.fillText(`+${extra} marcador${extra > 1 ? 'es' : ''}`, mkX + mkW / 2, cursorY + markerH / 2 + 0.5);
+                    cursorY += markerH + markerGap;
+                }
+
+                cursorY += 4; // respiro entre marcadores e tarefas
+            }
+
+            // ----- TAREFAS -----
+            const dayTasks = this.getTasksForDate(tasks, cell.dateStr);
+            const taskStartY = cursorY;
             const maxTextW = cellW - 32;
-            const maxLines = Math.floor((cellH - 52) / lineHeight);
+            const availableH = y + cellH - taskStartY - 8;
+            const maxLines = Math.max(0, Math.floor(availableH / lineHeight));
 
             ctx.textAlign = 'left';
+            ctx.textBaseline = 'top';
             ctx.font = `${taskFontSize}px "Segoe UI", Tahoma, sans-serif`;
 
             dayTasks.slice(0, maxLines).forEach(task => {
@@ -525,31 +756,38 @@ class PdfExporter {
                 if (display !== raw) display = display.slice(0, -1) + '…';
 
                 const catColor = StorageManager.getCategoryColor(task.category || 'Geral');
-                ctx.fillStyle = task.completed ? '#A0AEC0' : catColor;
-                ctx.fillRect(x + 8, ty, 3, taskFontSize + 2);
+                const completedOn = task.recurrence
+                    ? (Array.isArray(task.completedDates) && task.completedDates.includes(cell.dateStr))
+                    : task.completed;
 
-                ctx.fillStyle = task.completed ? '#A0AEC0' : '#2D3748';
-                ctx.fillText(display, x + 16, ty);
+                ctx.fillStyle = completedOn ? '#A0AEC0' : catColor;
+                ctx.fillRect(x + 8, taskStartY, 3, taskFontSize + 2);
 
-                if (task.completed) {
+                ctx.fillStyle = completedOn ? '#A0AEC0' : '#2D3748';
+                ctx.fillText(display, x + 16, taskStartY);
+
+                if (completedOn) {
                     const w = ctx.measureText(display).width;
                     ctx.strokeStyle = '#A0AEC0';
                     ctx.beginPath();
-                    ctx.moveTo(x + 16, ty + taskFontSize / 2);
-                    ctx.lineTo(x + 16 + w, ty + taskFontSize / 2);
+                    ctx.moveTo(x + 16, taskStartY + taskFontSize / 2);
+                    ctx.lineTo(x + 16 + w, taskStartY + taskFontSize / 2);
                     ctx.stroke();
                 }
 
-                ty += lineHeight;
+                cursorY = taskStartY + (dayTasks.slice(0, maxLines).indexOf(task) + 1) * lineHeight;
             });
 
             if (dayTasks.length > maxLines) {
                 ctx.fillStyle = '#718096';
                 ctx.font = `italic ${taskFontSize - 1}px "Segoe UI", Tahoma, sans-serif`;
-                ctx.fillText(`+ ${dayTasks.length - maxLines} mais`, x + 16, ty);
+                ctx.textAlign = 'left';
+                ctx.textBaseline = 'top';
+                ctx.fillText(`+ ${dayTasks.length - maxLines} mais`, x + 16, cursorY);
             }
         });
 
+        // Rodapé
         ctx.fillStyle = '#A0AEC0';
         ctx.font = '12px "Segoe UI", Tahoma, sans-serif';
         ctx.textAlign = 'center';
