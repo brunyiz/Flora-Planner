@@ -921,3 +921,328 @@ body.dark-mode .task-more:hover { background: rgba(255,255,255,0.06); }
 .mini-month-day.has-marker {
     font-weight: 700;
 }
+
+/* ==========================================================================
+   ADIÇÕES v6 — Marcadores dinâmicos, hover tools, atalhos para o Diário
+   ========================================================================== */
+
+/* ---------- Barra superior da célula do mês ---------- */
+.calendar-day-top {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 4px;
+    min-height: 22px;
+    margin-bottom: 2px;
+}
+
+/* Ferramentas de hover (aparecem só no hover) */
+.day-hover-tools {
+    display: flex;
+    gap: 3px;
+    opacity: 0;
+    transition: opacity 0.15s;
+    pointer-events: none;
+}
+.calendar-day:hover .day-hover-tools,
+.week-day-header:hover .day-hover-tools {
+    opacity: 1;
+    pointer-events: auto;
+}
+
+.day-tool {
+    background: rgba(255,255,255,0.9);
+    border: 1px solid var(--cinza);
+    color: var(--cor-texto);
+    width: 20px;
+    height: 20px;
+    padding: 0;
+    border-radius: 4px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    font-size: 0.62rem;
+    line-height: 1;
+    transition: background 0.15s, color 0.15s, transform 0.1s;
+}
+body.dark-mode .day-tool {
+    background: rgba(42, 42, 64, 0.95);
+}
+.day-tool:hover {
+    background: var(--cor-principal);
+    color: #fff;
+    border-color: var(--cor-principal);
+    transform: scale(1.08);
+}
+
+/* Número do dia clicável */
+.day-number-link {
+    cursor: pointer;
+    padding: 2px 6px;
+    border-radius: 6px;
+    transition: background 0.15s, color 0.15s;
+}
+.day-number-link:hover {
+    background: var(--cor-principal);
+    color: #fff !important;
+}
+
+/* Container de marcadores na célula do mês */
+.calendar-day-markers {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 2px;
+    margin-bottom: 2px;
+}
+.calendar-day-markers:empty { display: none; }
+
+.day-marker-more {
+    background: var(--cinza-claro) !important;
+    color: var(--cor-texto-light) !important;
+    cursor: pointer;
+    padding: 2px 5px !important;
+    font-size: 0.6rem !important;
+}
+
+/* ---------- Semanal: header com hover tools ---------- */
+.week-day-header {
+    position: relative;
+}
+.week-day-header .week-day-tools {
+    display: flex;
+    justify-content: center;
+    gap: 3px;
+    margin-top: 4px;
+    opacity: 0;
+    transition: opacity 0.15s;
+    pointer-events: none;
+}
+.week-day-header:hover .week-day-tools {
+    opacity: 1;
+    pointer-events: auto;
+}
+.week-day-header { cursor: pointer; }
+
+/* Dia do ano clicável */
+.mini-month-title-link {
+    cursor: pointer;
+    padding: 2px 6px;
+    border-radius: 6px;
+    transition: background 0.15s, color 0.15s;
+}
+.mini-month-title-link:hover {
+    background: var(--cor-principal);
+    color: #fff !important;
+}
+.mini-month-day {
+    cursor: pointer;
+    transition: transform 0.1s, box-shadow 0.1s;
+}
+.mini-month-day:hover:not(.other-month) {
+    transform: scale(1.18);
+    box-shadow: 0 0 0 2px var(--cor-principal);
+    z-index: 2;
+}
+
+/* ---------- Modal de Marcador ---------- */
+#marker-modal .modal-content { max-width: 500px; }
+
+.marker-suggestions-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 8px;
+}
+.suggestion-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 4px 10px;
+    border-radius: 20px;
+    border: 2px solid;
+    background: var(--cor-blocos);
+    color: var(--cor-texto);
+    font-size: 0.78rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: transform 0.12s, box-shadow 0.12s;
+}
+.suggestion-chip:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 3px 8px rgba(0,0,0,0.12);
+}
+.chip-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    flex-shrink: 0;
+}
+
+.marker-color-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+.marker-color-row input[type="color"] {
+    width: 54px;
+    height: 42px;
+    padding: 3px;
+    border: 2px solid var(--cinza);
+    border-radius: 8px;
+    background: transparent;
+    cursor: pointer;
+}
+.marker-color-presets {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+}
+.color-preset {
+    width: 26px;
+    height: 26px;
+    border-radius: 50%;
+    border: 2px solid rgba(0,0,0,0.1);
+    cursor: pointer;
+    transition: transform 0.12s, box-shadow 0.12s;
+    padding: 0;
+}
+.color-preset:hover {
+    transform: scale(1.15);
+    box-shadow: 0 0 0 3px rgba(0,0,0,0.12);
+}
+
+/* ---------- View Diária: múltiplos marcadores ---------- */
+.day-marker-section {
+    flex-wrap: wrap;
+}
+.marker-recur-badge {
+    font-size: 0.7rem;
+    opacity: 0.85;
+}
+.btn-add-marker-compact {
+    padding: 8px 12px !important;
+    border-style: dashed !important;
+    border-width: 2px !important;
+}
+
+/* ---------- Settings: aba Marcadores ---------- */
+.markers-actions {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin-bottom: 12px;
+}
+.marker-year-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 14px;
+    font-size: 0.88rem;
+    color: var(--cor-texto-light);
+}
+
+.markers-list {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    max-height: 320px;
+    overflow-y: auto;
+    padding-right: 4px;
+}
+.markers-list:empty::after {
+    content: 'Nenhum marcador cadastrado.';
+    color: var(--cor-texto-light);
+    font-style: italic;
+    font-size: 0.9rem;
+    padding: 12px 0;
+    display: block;
+}
+.markers-empty {
+    color: var(--cor-texto-light);
+    font-style: italic;
+    font-size: 0.9rem;
+    padding: 12px 0;
+}
+
+.marker-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px 14px;
+    background: var(--cinza-claro);
+    border-radius: 10px;
+    border: var(--borda);
+    gap: 12px;
+    transition: background 0.15s;
+}
+.marker-item:hover { background: var(--cinza); }
+
+.marker-item-left {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    min-width: 0;
+    flex: 1;
+}
+.marker-swatch {
+    width: 14px;
+    height: 14px;
+    border-radius: 4px;
+    flex-shrink: 0;
+    box-shadow: 0 0 0 2px rgba(0,0,0,0.08);
+}
+.marker-item-info { min-width: 0; }
+.marker-item-label {
+    font-weight: 600;
+    font-size: 0.92rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.marker-item-when {
+    font-size: 0.78rem;
+    color: var(--cor-texto-light);
+    margin-top: 2px;
+}
+
+.marker-item-actions {
+    display: flex;
+    gap: 4px;
+}
+.marker-item-btn {
+    background: transparent;
+    border: none;
+    width: 30px;
+    height: 30px;
+    border-radius: 8px;
+    cursor: pointer;
+    color: var(--cor-texto-light);
+    transition: background 0.15s, color 0.15s;
+    font-size: 0.85rem;
+}
+.marker-item-btn.edit:hover {
+    background: rgba(66, 153, 225, 0.15);
+    color: #3182ce;
+}
+.marker-item-btn.delete:hover {
+    background: rgba(229, 62, 62, 0.15);
+    color: var(--erro);
+}
+
+/* ---------- Cabeçalho e painel do ano ---------- */
+.mini-month-day.has-marker {
+    position: relative;
+}
+.mini-month-day.has-marker::after {
+    content: '';
+    position: absolute;
+    top: 2px;
+    right: 2px;
+    width: 4px;
+    height: 4px;
+    border-radius: 50%;
+    background: currentColor;
+    opacity: 0.6;
+}
