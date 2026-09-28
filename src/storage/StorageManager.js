@@ -1,13 +1,14 @@
 /**
  * StorageManager.js
  * Persistência + utilitários de salvamento em arquivo.
- * Categorias agora são objetos { name, color }.
- * NOVO: normalização de tarefas (endTime, recurrence, order).
+ * Categorias são objetos { name, color }.
+ * NOVO v5: completedDates, excludedDates (para tarefas recorrentes) e marcadores de dia.
  */
 
 class StorageManager {
     static TASKS_KEY = 'flora_planner_tasks';
     static SETTINGS_KEY = 'flora_planner_settings';
+    static DAY_MARKERS_KEY = 'flora_planner_day_markers';
 
     static DEFAULT_CATEGORIES = [
         { name: 'Geral',    color: '#D8B4FE' },
@@ -40,10 +41,6 @@ class StorageManager {
         }
     }
 
-    /**
-     * Garante que tarefas antigas tenham os novos campos.
-     * order fica undefined por padrão (ordenação automática por horário).
-     */
     static normalizeTasks(tasks) {
         if (!Array.isArray(tasks)) return [];
         return tasks.map(task => {
@@ -51,6 +48,11 @@ class StorageManager {
             if (typeof t.endTime !== 'string') t.endTime = '';
             if (typeof t.notes !== 'string') t.notes = '';
             if (typeof t.time !== 'string') t.time = '';
+            if (typeof t.completed !== 'boolean') t.completed = !!t.completed;
+
+            // NOVO: arrays para controle por ocorrência
+            if (!Array.isArray(t.completedDates)) t.completedDates = [];
+            if (!Array.isArray(t.excludedDates)) t.excludedDates = [];
 
             // Recurrence: { days: [0..6], until: 'YYYY-MM-DD'|null }
             if (t.recurrence && typeof t.recurrence === 'object') {
@@ -64,9 +66,7 @@ class StorageManager {
                 t.recurrence = null;
             }
 
-            // order: null/undefined por padrão → sort por hora
             if (typeof t.order !== 'number') delete t.order;
-
             return t;
         });
     }
@@ -189,15 +189,59 @@ class StorageManager {
         return true;
     }
 
+    /* -------------------- MARCADORES DE DIA -------------------- */
+
+    static getDayMarkers() {
+        try {
+            const data = localStorage.getItem(this.DAY_MARKERS_KEY);
+            const parsed = data ? JSON.parse(data) : [];
+            if (!Array.isArray(parsed)) return [];
+            return parsed.filter(m => m && typeof m.date === 'string' && typeof m.label === 'string');
+        } catch (e) {
+            console.error('Erro ao carregar marcadores de dia:', e);
+            return [];
+        }
+    }
+
+    static saveDayMarkers(markers) {
+        try {
+            localStorage.setItem(this.DAY_MARKERS_KEY, JSON.stringify(markers));
+        } catch (e) {
+            console.error('Erro ao salvar marcadores de dia:', e);
+        }
+    }
+
+    static getDayMarker(dateStr) {
+        return this.getDayMarkers().find(m => m.date === dateStr) || null;
+    }
+
+    static setDayMarker(dateStr, label, color) {
+        const markers = this.getDayMarkers().filter(m => m.date !== dateStr);
+        if (label && String(label).trim()) {
+            markers.push({
+                date: dateStr,
+                label: String(label).trim(),
+                color: color || '#F6AD55'
+            });
+        }
+        this.saveDayMarkers(markers);
+        return this.getDayMarker(dateStr);
+    }
+
+    static removeDayMarker(dateStr) {
+        this.saveDayMarkers(this.getDayMarkers().filter(m => m.date !== dateStr));
+    }
+
     /* ------------------------- BACKUP --------------------------- */
 
     static buildBackupPayload() {
         return {
             app: 'flora-planner',
-            version: 4,
+            version: 5,
             exportedAt: new Date().toISOString(),
             tasks: this.getTasks(),
-            settings: this.getSettings()
+            settings: this.getSettings(),
+            dayMarkers: this.getDayMarkers()
         };
     }
 
@@ -220,6 +264,9 @@ class StorageManager {
 
         this.saveTasks(normalizedTasks);
         this.saveSettings(merged);
+        if (Array.isArray(parsed.dayMarkers)) {
+            this.saveDayMarkers(parsed.dayMarkers);
+        }
 
         return { tasks: normalizedTasks, settings: merged };
     }
