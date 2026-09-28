@@ -3,6 +3,99 @@
  * Ponto de entrada principal do Flora Planner
  */
 
+document.addEventListener('DOMContentLoaded', () => {
+    let tasks = StorageManager.loadTasks();
+    let settings = StorageManager.loadSettings();
+
+    // Instancia views
+    const calendarView = new CalendarView(null, {
+        onTaskClick: (task) => taskManager.openForEdit(task),
+        onTasksUpdated: (updated) => {
+            tasks = updated;
+            StorageManager.saveTasks(tasks);
+            calendarView.setTasks(tasks);
+        },
+        onNewTask: (date) => taskManager.openNew(date)
+    });
+
+    const taskManager = new TaskManager({
+        onSave: (updated) => {
+            tasks = updated;
+            StorageManager.saveTasks(tasks);
+            calendarView.setTasks(tasks);
+        },
+        onDelete: (updated) => {
+            tasks = updated;
+            StorageManager.saveTasks(tasks);
+            calendarView.setTasks(tasks);
+        }
+    });
+
+    // Estado inicial
+    taskManager.setTasks(tasks);
+    calendarView.setTasks(tasks);
+    calendarView.setView(settings.view || 'month');
+
+    // Aplica botão de view ativo
+    const activateBtn = (view) => {
+        document.querySelectorAll('.view-btn').forEach(b => b.classList.remove('active'));
+        document.querySelector(`.view-btn[data-view="${view}"]`)?.classList.add('active');
+    };
+    activateBtn(settings.view || 'month');
+
+    // Trocas de view
+    document.querySelectorAll('.view-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const view = btn.dataset.view;
+            activateBtn(view);
+            calendarView.setView(view);
+            settings.view = view;
+            StorageManager.saveSettings(settings);
+        });
+    });
+
+    // Navegação
+    document.getElementById('btn-prev').addEventListener('click', () => navigate(-1));
+    document.getElementById('btn-next').addEventListener('click', () => navigate(1));
+    document.getElementById('btn-today').addEventListener('click', () => {
+        calendarView.setDate(new Date());
+    });
+
+    function navigate(dir) {
+        const d = new Date(calendarView.currentDate);
+        switch (calendarView.currentView) {
+            case 'month': d.setMonth(d.getMonth() + dir); break;
+            case 'week':  d.setDate(d.getDate() + 7 * dir); break;
+            case 'day':   d.setDate(d.getDate() + dir); break;
+            case 'year':  d.setFullYear(d.getFullYear() + dir); break;
+        }
+        calendarView.setDate(d);
+    }
+
+    // Exportar PDF
+    document.getElementById('btn-export-pdf').addEventListener('click', () => {
+        const view = calendarView.currentView;
+        const date = calendarView.currentDate;
+        if (view === 'week')      PdfExporter.exportWeekly(date, tasks);
+        else if (view === 'year') PdfExporter.exportYearly(date, tasks);
+        else if (view === 'day')  PdfExporter.exportWeekly(date, tasks); // fallback: semana
+        else                      PdfExporter.exportMonthly(date, tasks);
+    });
+
+    // Exportar PNG
+    document.getElementById('btn-export-png').addEventListener('click', async () => {
+        const view = calendarView.currentView;
+        const map = {
+            month: 'view-month',
+            week:  'view-week',
+            day:   'view-day',
+            year:  'view-year'
+        };
+        const elId = map[view] || 'view-month';
+        await PdfExporter.exportElementAsPng(elId, `flora-planner-${view}.png`);
+    });
+});
+
 class ClickSound {
     constructor() {
         this.ctx = null;
