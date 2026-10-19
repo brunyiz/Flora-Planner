@@ -173,12 +173,7 @@ class DayMarkerModal {
 
     /** @param {{date?: string, id?: string|null}} opts */
     open({ date = null, id = null } = {}) {
-        // Se recebeu só uma data e existem marcadores nela, edita o primeiro
-        if (!id && date) {
-            const existing = StorageManager.getDayMarkersForDate(date);
-            if (existing.length > 0) id = existing[0].id;
-        }
-
+        // Se id for null, sempre abre em branco para criar um novo.
         if (id) {
             const m = StorageManager.getDayMarkers().find(x => x.id === id);
             if (m) {
