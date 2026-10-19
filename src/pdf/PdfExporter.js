@@ -104,12 +104,18 @@ class PdfExporter {
         const taskFontSize = fontSizes[settings.pdfFontSize] || fontSizes.medium;
         const markerFontSize = '6.5pt';
 
-        const buildTaskHtml = (task) => {
+        const buildTaskHtml = (task, dateStr) => {
             const timeStr = task.time
                 ? (task.endTime ? `${task.time}-${task.endTime}` : task.time) + ' • '
                 : '';
             const catColor = StorageManager.getCategoryColor(task.category || 'Geral');
-            return `<div class="pdf-task ${task.completed ? 'completed' : ''}"
+            
+            // Verifica se está concluída naquele dia específico (para recorrentes)
+            const completedOn = task.recurrence
+                ? (Array.isArray(task.completedDates) && task.completedDates.includes(dateStr))
+                : task.completed;
+
+            return `<div class="pdf-task ${completedOn ? 'completed' : ''}"
                          style="border-left-color:${this.escapeHtml(catColor)};">&bull; ${this.escapeHtml(timeStr)}${this.escapeHtml(task.title)}</div>`;
         };
 
@@ -142,7 +148,7 @@ class PdfExporter {
                 <div class="pdf-day">
                     <span class="pdf-day-num">${d}</span>
                     ${markersHtml}
-                    <div class="pdf-task-list">${dayTasks.map(buildTaskHtml).join('')}</div>
+                    <div class="pdf-task-list">${dayTasks.map(t => buildTaskHtml(t, dateStr)).join('')}</div>
                 </div>
             `;
         }
